@@ -1141,10 +1141,9 @@ button.detail-author {
   border: none;
   cursor: pointer;
   padding: 0;
-  font-size: 14px;
+  font-size: 13px;
   color: var(--text-sec);
-  font-family: var(--font-serif);
-  font-style: italic;
+  font-family: var(--font-ui);
   transition: color var(--ease);
 }
 button.detail-author:hover { color: var(--metal); }
@@ -1717,7 +1716,7 @@ button.card-fandom:hover { opacity: 1; text-decoration: underline; text-underlin
   padding: 0;
   font-size: 12px;
   color: var(--text-sec);
-  font-family: var(--font-serif);
+  font-family: var(--font-ui);
   transition: color var(--ease);
 }
 .card-author-btn:hover { color: var(--metal); }
@@ -1727,7 +1726,7 @@ button.card-fandom:hover { opacity: 1; text-decoration: underline; text-underlin
   cursor: pointer;
   padding: 0;
   font-size: 10px;
-  font-family: var(--font-serif);
+  font-family: var(--font-ui);
   color: var(--metal);
   opacity: .80;
   line-height: 1.3;
