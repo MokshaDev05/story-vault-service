@@ -1,0 +1,2 @@
+ALTER TABLE stories
+    ADD COLUMN user_id BIGINT REFERENCES users(id) ON DELETE CASCADE;

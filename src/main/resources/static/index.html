@@ -1,0 +1,472 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light" data-metal="gold" data-density="minimal">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Story Vault</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,500;0,600;0,700;1,400;1,600&family=EB+Garamond:ital,wght@0,400;0,500;0,600;1,400;1,500&family=Playfair+Display:ital,wght@0,400;0,600;0,700;1,400&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+
+  <!-- ── Login ─────────────────────────────────────────────────────── -->
+  <section id="login-section">
+    <div class="login-box">
+      <div class="ornament-row">
+        <span class="ornament-line"></span>
+        <span class="ornament-gem">◆</span>
+        <span class="ornament-line"></span>
+      </div>
+      <h1 class="login-wordmark">Story Vault</h1>
+      <div class="ornament-row">
+        <span class="ornament-line"></span>
+        <span class="ornament-gem">◆</span>
+        <span class="ornament-line"></span>
+      </div>
+      <p id="login-tagline" class="login-tagline">Your private literary archive.</p>
+
+      <!-- ── Login mode ── -->
+      <div id="login-mode">
+        <div class="form-field">
+          <label for="login-username" class="form-label">Username</label>
+          <input id="login-username" type="text" class="form-input" autocomplete="username" />
+        </div>
+        <div class="form-field">
+          <label for="login-password" class="form-label">Password</label>
+          <input id="login-password" type="password" class="form-input" autocomplete="current-password" />
+        </div>
+        <button id="login-btn" class="btn btn-primary btn-full">Enter the Vault</button>
+        <p id="login-error" class="login-error hidden"></p>
+        <p class="auth-toggle">New here? <button type="button" id="show-register-btn" class="toggle-btn">Create an account</button></p>
+      </div>
+
+      <!-- ── Register mode ── -->
+      <div id="register-mode" class="hidden">
+        <div class="form-field">
+          <label for="reg-username" class="form-label">
+            Username <span class="form-hint">(min. 3 characters)</span>
+          </label>
+          <input id="reg-username" type="text" class="form-input" autocomplete="username" />
+        </div>
+        <div class="form-field">
+          <label for="reg-password" class="form-label">
+            Password <span class="form-hint">(min. 6 characters)</span>
+          </label>
+          <input id="reg-password" type="password" class="form-input" autocomplete="new-password" />
+        </div>
+        <div class="form-field">
+          <label for="reg-confirm" class="form-label">Confirm password</label>
+          <input id="reg-confirm" type="password" class="form-input" autocomplete="new-password" />
+        </div>
+        <button id="register-btn" class="btn btn-primary btn-full">Create Account</button>
+        <p id="register-error" class="login-error hidden"></p>
+        <p class="auth-toggle">Already have an account? <button type="button" id="show-login-btn" class="toggle-btn">Sign in</button></p>
+      </div>
+
+    </div>
+  </section>
+
+  <!-- ── App ───────────────────────────────────────────────────────── -->
+  <div id="app" class="hidden">
+
+    <header class="site-header">
+      <div class="header-inner">
+
+        <div class="wordmark-block">
+          <div class="crest-top" aria-hidden="true">
+            <span class="crest-top-line"></span>
+            <span class="crest-top-gem">◈ ◆ ◈</span>
+            <span class="crest-top-line"></span>
+          </div>
+          <span class="wordmark">Story Vault</span>
+          <div class="crest-rule">
+            <span class="crest-line"></span>
+            <span class="crest-motif">◁ ◆ ▷</span>
+            <span class="crest-line"></span>
+          </div>
+          <span class="wordmark-sub">Private Literary Archive</span>
+        </div>
+
+        <div class="header-actions">
+          <span id="header-username" class="header-username hidden"></span>
+          <span class="header-sep">◆</span>
+          <div class="metal-toggle" role="group" aria-label="Accent metal">
+            <button class="metal-btn active" data-metal="gold" title="Gold accent">◆</button>
+            <button class="metal-btn" data-metal="silver" title="Silver accent">◆</button>
+            <button class="metal-btn" data-metal="rose" title="Rose Gold accent">◆</button>
+          </div>
+          <span class="header-sep">◆</span>
+          <button id="theme-btn" class="icon-btn" title="Toggle dark mode">◑</button>
+          <button id="density-btn" class="text-btn" title="Toggle design density">◈ Maximal</button>
+          <button id="scroll-to-controls" class="scroll-hint-btn">▾ Search</button>
+          <button id="logout-btn" class="text-btn">Sign out</button>
+        </div>
+
+      </div>
+    </header>
+
+    <div class="vault-stage">
+
+      <div id="controls-bar" class="controls-bar">
+        <div class="controls-inner">
+          <input id="search-input" type="search" class="search-input" placeholder="Search title, author, fandom, tags…" />
+          <div class="filter-group">
+            <select id="filter-platform" class="filter-select">
+              <option value="">All platforms</option>
+              <option value="AO3">AO3</option>
+              <option value="FFN">FFN</option>
+              <option value="WATTPAD">Wattpad</option>
+              <option value="OTHER">Other</option>
+            </select>
+            <select id="filter-status" class="filter-select">
+              <option value="">All statuses</option>
+              <option value="ONGOING">Ongoing</option>
+              <option value="COMPLETE">Complete</option>
+              <option value="HIATUS">Hiatus</option>
+              <option value="ABANDONED">Abandoned</option>
+            </select>
+          </div>
+          <div class="action-group">
+            <button id="adv-toggle-btn" class="btn btn-ghost">⊞ Advanced</button>
+            <button id="refresh-btn" class="btn btn-ghost">↺ Refresh</button>
+            <button id="add-btn" class="btn btn-primary">+ Add Story</button>
+          </div>
+        </div>
+
+        <!-- ── Active quick-filter chips ────────────────────────────────── -->
+        <div id="quick-filter-chips" class="quick-filter-chips hidden"></div>
+
+        <!-- ── Advanced Filters Panel ──────────────────────────────────── -->
+        <div id="adv-panel" class="adv-panel hidden">
+
+          <div class="adv-row">
+            <div class="adv-section">
+              <span class="adv-section-label">Sort</span>
+              <div class="adv-fields">
+                <select id="adv-sort-by" class="filter-select">
+                  <option value="LAST_ACCESSED">Last accessed</option>
+                  <option value="FIRST_ACCESSED">First accessed</option>
+                  <option value="ACCESS_COUNT">Times read</option>
+                  <option value="TITLE">Title</option>
+                  <option value="AUTHOR">Author</option>
+                  <option value="FANDOM">Fandom</option>
+                  <option value="WORD_COUNT">Word count</option>
+                  <option value="CHAPTER_COUNT">Chapters</option>
+                  <option value="AO3_PUBLISHED_DATE">Published</option>
+                  <option value="AO3_UPDATED_DATE">Updated</option>
+                  <option value="CREATED_AT">Date added</option>
+                </select>
+                <select id="adv-sort-dir" class="filter-select">
+                  <option value="desc">Newest / Highest first</option>
+                  <option value="asc">Oldest / Lowest first</option>
+                </select>
+              </div>
+            </div>
+          </div>
+
+          <div class="adv-row adv-row-multi">
+            <div class="adv-section">
+              <span class="adv-section-label">Reading History</span>
+              <div class="adv-fields">
+                <label class="adv-label">Last accessed</label>
+                <div class="adv-date-range">
+                  <input id="adv-last-after"  type="date" class="adv-date" title="Last accessed after" />
+                  <span class="adv-to">to</span>
+                  <input id="adv-last-before" type="date" class="adv-date" title="Last accessed before" />
+                </div>
+                <label class="adv-label">First accessed</label>
+                <div class="adv-date-range">
+                  <input id="adv-first-after"  type="date" class="adv-date" title="First accessed after" />
+                  <span class="adv-to">to</span>
+                  <input id="adv-first-before" type="date" class="adv-date" title="First accessed before" />
+                </div>
+                <div class="adv-inline">
+                  <label class="adv-label" for="adv-min-reads">Min. times read</label>
+                  <input id="adv-min-reads" type="number" class="adv-num" min="1" placeholder="—" />
+                </div>
+                <div class="adv-inline">
+                  <label class="adv-label" for="adv-chapter">Chapter accessed</label>
+                  <input id="adv-chapter" type="number" class="adv-num" min="1" placeholder="—" />
+                </div>
+              </div>
+            </div>
+
+            <div class="adv-section">
+              <span class="adv-section-label">Metadata</span>
+              <div class="adv-fields">
+                <div class="adv-inline">
+                  <label class="adv-label" for="adv-reading-status">Reading status</label>
+                  <select id="adv-reading-status" class="filter-select adv-select">
+                    <option value="">Any</option>
+                    <option value="WANT_TO_READ">Want to Read</option>
+                    <option value="STILL_READING">Reading</option>
+                    <option value="CAUGHT_UP">Caught Up</option>
+                    <option value="FINISHED_READING">Finished</option>
+                    <option value="ON_HOLD">On Hold</option>
+                    <option value="DNF">DNF</option>
+                    <option value="REREADING">Rereading</option>
+                  </select>
+                </div>
+                <div class="adv-inline">
+                  <label class="adv-label" for="adv-rating">Rating</label>
+                  <select id="adv-rating" class="filter-select adv-select">
+                    <option value="">Any</option>
+                    <option value="GENERAL">General</option>
+                    <option value="TEEN">Teen</option>
+                    <option value="MATURE">Mature</option>
+                    <option value="EXPLICIT">Explicit</option>
+                    <option value="NOT_RATED">Not rated</option>
+                  </select>
+                </div>
+                <div class="adv-inline">
+                  <label class="adv-label" for="adv-language">Language</label>
+                  <input id="adv-language" type="text" class="adv-text" placeholder="e.g. English" />
+                </div>
+              </div>
+            </div>
+
+            <div class="adv-section">
+              <span class="adv-section-label">Tags &amp; Ships</span>
+              <div class="adv-fields">
+                <div class="adv-inline">
+                  <label class="adv-label" for="adv-tag">Tag contains</label>
+                  <input id="adv-tag" type="text" class="adv-text" placeholder="slow burn…" />
+                </div>
+                <div class="adv-inline">
+                  <label class="adv-label" for="adv-ship">Ship contains</label>
+                  <input id="adv-ship" type="text" class="adv-text" placeholder="character/character…" />
+                </div>
+                <div class="adv-inline">
+                  <label class="adv-label" for="adv-char">Character contains</label>
+                  <input id="adv-char" type="text" class="adv-text" placeholder="character name…" />
+                </div>
+              </div>
+            </div>
+
+            <div class="adv-section">
+              <span class="adv-section-label">Counts</span>
+              <div class="adv-fields">
+                <label class="adv-label">Word count</label>
+                <div class="adv-range">
+                  <input id="adv-words-min" type="number" class="adv-num" min="0" placeholder="min" />
+                  <span class="adv-to">–</span>
+                  <input id="adv-words-max" type="number" class="adv-num" min="0" placeholder="max" />
+                </div>
+                <label class="adv-label">Chapters</label>
+                <div class="adv-range">
+                  <input id="adv-chaps-min" type="number" class="adv-num" min="1" placeholder="min" />
+                  <span class="adv-to">–</span>
+                  <input id="adv-chaps-max" type="number" class="adv-num" min="1" placeholder="max" />
+                </div>
+              </div>
+            </div>
+
+            <div class="adv-section">
+              <span class="adv-section-label">Dates</span>
+              <div class="adv-fields">
+                <label class="adv-label">AO3 published</label>
+                <div class="adv-date-range">
+                  <input id="adv-pub-after"  type="date" class="adv-date" title="Published after" />
+                  <span class="adv-to">to</span>
+                  <input id="adv-pub-before" type="date" class="adv-date" title="Published before" />
+                </div>
+                <label class="adv-label">AO3 updated</label>
+                <div class="adv-date-range">
+                  <input id="adv-upd-after"  type="date" class="adv-date" title="Updated after" />
+                  <span class="adv-to">to</span>
+                  <input id="adv-upd-before" type="date" class="adv-date" title="Updated before" />
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div id="adv-chips" class="adv-chips"></div>
+
+          <div class="adv-actions">
+            <button id="adv-clear-btn" class="btn btn-ghost">✕ Clear all filters</button>
+            <button id="adv-search-btn" class="btn btn-primary">Search →</button>
+          </div>
+        </div>
+
+      </div>
+
+      <div class="catalogue-header" aria-hidden="true">
+        <div class="catalogue-header-inner">
+          <div class="catalogue-ornament">
+            <span class="catalogue-line"></span>
+            <span class="catalogue-gem">◇ ◆ ◇</span>
+            <span class="catalogue-line"></span>
+          </div>
+          <h2 class="catalogue-title">Vault History</h2>
+          <div class="catalogue-ornament">
+            <span class="catalogue-line"></span>
+            <span class="catalogue-gem">◇ ◆ ◇</span>
+            <span class="catalogue-line"></span>
+          </div>
+        </div>
+      </div>
+
+      <main class="main-content">
+        <p id="story-count" class="story-count hidden"></p>
+        <p id="loading-state" class="loading-state hidden">Loading your vault…</p>
+        <p id="fetch-error" class="fetch-error hidden">Could not load stories. Is the service running?</p>
+        <div id="cards-grid" class="cards-grid"></div>
+        <div id="empty-state" class="empty-state hidden">
+          <div class="empty-gem">◆</div>
+          <h2 class="empty-title">Your vault is empty.</h2>
+          <p class="empty-text">Begin your archive by adding your first story.</p>
+          <button id="empty-add-btn" class="btn btn-primary">+ Add Story</button>
+        </div>
+      </main>
+
+    </div>
+
+  </div>
+
+  <!-- ── Add Story Modal ─────────────────────────────────────────── -->
+  <div id="add-modal" class="modal-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="add-modal-title">
+    <div class="modal">
+      <div class="modal-header">
+        <h2 id="add-modal-title" class="modal-title">Add to Vault</h2>
+        <button id="add-modal-close" class="modal-close" aria-label="Close">✕</button>
+      </div>
+      <hr class="modal-rule" />
+      <form id="add-form" class="add-form" novalidate>
+
+        <div class="form-field">
+          <label for="f-title" class="form-label">Title <span class="req">*</span></label>
+          <input id="f-title" type="text" class="form-input" />
+        </div>
+
+        <div class="form-row">
+          <div class="form-field">
+            <label for="f-author" class="form-label">Author <span class="req">*</span></label>
+            <input id="f-author" type="text" class="form-input" />
+          </div>
+          <div class="form-field">
+            <label for="f-fandom" class="form-label">Fandom <span class="req">*</span></label>
+            <input id="f-fandom" type="text" class="form-input" />
+          </div>
+        </div>
+
+        <div class="form-row form-row-3">
+          <div class="form-field">
+            <label for="f-platform" class="form-label">Platform <span class="req">*</span></label>
+            <select id="f-platform" class="form-input form-select">
+              <option value="AO3">AO3</option>
+              <option value="FFN">FFN</option>
+              <option value="WATTPAD">Wattpad</option>
+              <option value="OTHER">Other</option>
+            </select>
+          </div>
+          <div class="form-field">
+            <label for="f-status" class="form-label">Status</label>
+            <select id="f-status" class="form-input form-select">
+              <option value="ONGOING">Ongoing</option>
+              <option value="COMPLETE">Complete</option>
+              <option value="HIATUS">Hiatus</option>
+              <option value="ABANDONED">Abandoned</option>
+            </select>
+          </div>
+          <div class="form-field">
+            <label for="f-rating" class="form-label">Rating</label>
+            <select id="f-rating" class="form-input form-select">
+              <option value="NOT_RATED">Not rated</option>
+              <option value="GENERAL">General</option>
+              <option value="TEEN">Teen</option>
+              <option value="MATURE">Mature</option>
+              <option value="EXPLICIT">Explicit</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="form-row">
+          <div class="form-field">
+            <label for="f-reading-status" class="form-label">Reading Status</label>
+            <select id="f-reading-status" class="form-input form-select">
+              <option value="">— not set —</option>
+              <option value="WANT_TO_READ">Want to Read</option>
+              <option value="STILL_READING">Reading</option>
+              <option value="CAUGHT_UP">Caught Up</option>
+              <option value="FINISHED_READING">Finished</option>
+              <option value="ON_HOLD">On Hold</option>
+              <option value="DNF">DNF</option>
+              <option value="REREADING">Rereading</option>
+            </select>
+          </div>
+          <div class="form-field" style="visibility:hidden;"></div>
+        </div>
+
+        <div id="f-progress-section" class="hidden">
+          <div class="form-row">
+            <div class="form-field">
+              <label for="f-current-chapter" class="form-label">Current Chapter</label>
+              <input id="f-current-chapter" type="number" class="form-input" min="1" placeholder="e.g. 5" />
+            </div>
+            <div class="form-field">
+              <label for="f-current-chapter-url" class="form-label">Chapter URL</label>
+              <input id="f-current-chapter-url" type="url" class="form-input" placeholder="https://…" />
+            </div>
+          </div>
+        </div>
+
+        <div class="form-field">
+          <label for="f-url" class="form-label">Original URL</label>
+          <input id="f-url" type="url" class="form-input" placeholder="https://…" />
+        </div>
+
+        <div class="form-field">
+          <label for="f-summary" class="form-label">Summary</label>
+          <textarea id="f-summary" class="form-input form-textarea" rows="3"></textarea>
+        </div>
+
+        <div class="form-row">
+          <div class="form-field">
+            <label for="f-words" class="form-label">Word count</label>
+            <input id="f-words" type="number" class="form-input" min="0" placeholder="—" />
+          </div>
+          <div class="form-field">
+            <label for="f-chapters" class="form-label">Chapters</label>
+            <input id="f-chapters" type="number" class="form-input" min="0" placeholder="—" />
+          </div>
+        </div>
+
+        <div class="form-field">
+          <label for="f-tags" class="form-label">
+            Tags <span class="form-hint">(comma-separated)</span>
+          </label>
+          <input id="f-tags" type="text" class="form-input" placeholder="slow burn, found family, hurt/comfort" />
+        </div>
+
+        <p id="add-form-error" class="form-error hidden"></p>
+
+        <div class="form-actions">
+          <button type="button" id="add-cancel-btn" class="btn btn-ghost">Cancel</button>
+          <button type="submit" id="add-submit-btn" class="btn btn-primary">Add to Vault</button>
+        </div>
+
+      </form>
+    </div>
+  </div>
+
+  <!-- ── Detail Modal ────────────────────────────────────────────── -->
+  <div id="detail-modal" class="modal-overlay hidden" role="dialog" aria-modal="true">
+    <div class="modal modal-wide">
+      <button id="detail-close" class="modal-close" aria-label="Close">✕</button>
+      <div id="detail-content"></div>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+
+  <div class="page-frame" aria-hidden="true">
+    <span class="frame-corner frame-tl">◆</span>
+    <span class="frame-corner frame-tr">◆</span>
+    <span class="frame-corner frame-bl">◆</span>
+    <span class="frame-corner frame-br">◆</span>
+  </div>
+
+</body>
+</html>
