@@ -4,7 +4,7 @@ Spring Boot REST API for a private personal story archive. Track, organise, and 
 
 Each user account has an isolated vault — stories, notes, and files are never visible across accounts.
 
-A companion Chrome extension (`story-vault-extension`) lets you save any story page to the vault in one click without leaving the browser.
+A companion Chrome extension (`story-vault-extension`) auto-tracks AO3 reading: every time you open an AO3 work page, the extension records which chapter you read and when, with no clicks required. It also saves new stories to the vault automatically on first visit.
 
 ---
 
@@ -40,7 +40,7 @@ Wait for:
 Started StoryVaultApplication in 2.x seconds
 ```
 
-The API is now live at `http://localhost:8080`. Flyway creates all tables automatically on first startup — no manual SQL needed.
+The API is live at `http://localhost:8080`. Flyway creates all tables automatically on first startup — no manual SQL needed.
 
 A `demo` user (password: `demo123`) is created automatically on first boot and adopts any pre-existing stories.
 
@@ -48,56 +48,121 @@ A `demo` user (password: `demo123`) is created automatically on first boot and a
 
 Navigate to `http://localhost:8080` in your browser.
 
-- If you are a new user, click **Create an account** on the login screen.
-- If you already have an account (or want to use the demo account), enter your credentials and click **Enter the Vault**.
+- New user: click **Create an account** on the login screen.
+- Existing user: enter your credentials and click **Enter the Vault**.
 
 **4. (Optional) Install the Chrome extension**
 
-See `story-vault-extension/README.md` for browser install steps. Once installed, you can save any story page to the vault directly from Chrome. The extension must be logged in separately — sign in from the extension popup using the same credentials.
+See `story-vault-extension/README.md` for install steps. Once installed and signed in, every AO3 work page you open is tracked automatically — no clicks needed.
 
 ---
 
 ## Web UI
 
-The built-in UI is served at `http://localhost:8080` from static files bundled with the service. No separate install is needed.
-
-### Login screen
-
-- **Sign in:** enter your username and password, then click **Enter the Vault**.
-- **Create an account:** click **Create an account** below the sign-in form. Enter a username (min. 3 characters) and a password (min. 6 characters), confirm the password, and click **Create Account**. On success you are logged in automatically.
-- **Switching between modes:** click the inline link to toggle between sign-in and create-account views.
+The built-in UI is served at `http://localhost:8080` from static files bundled with the service.
 
 ### Library
 
-Once signed in you see your vault:
-
 | Control | What it does |
 |---------|-------------|
-| Search bar | Filters cards by title, author, or fandom as you type (no API call) |
+| Search bar | Text search across title, author, fandom, tags, ships — no API call |
 | Platform dropdown | Narrows results to one platform |
-| Status dropdown | Narrows results to one status |
-| ↺ Refresh | Re-fetches from the API |
-| + Add Story | Opens a form to save a new story |
-| Story card | Click to open a full detail view |
-| ◑ (top right) | Toggles dark / light mode (persisted) |
+| Status dropdown | Narrows results to one official status |
+| ↺ Refresh | Re-fetches from the API and clears all active filters |
+| + Add Story | Opens a form to save a new story manually |
+| ⊞ Advanced | Expands the advanced search panel (POST /search) |
+| Story card | Click anywhere on the card to open the full detail view |
+| ◑ (top right) | Toggles dark / light mode (persisted per browser) |
 | Sign out | Clears the token and returns to login |
 
-### Error messages
+### Clickable filter elements
 
-| Message | Meaning |
-|---------|---------|
-| Incorrect username or password. | Wrong credentials on login |
-| That username is already taken. | Duplicate username on registration |
-| Passwords do not match. | Confirm-password field mismatch |
-| Username must be at least 3 characters. | Validation (client-side) |
-| Password must be at least 6 characters. | Validation (client-side) |
-| Could not reach StoryVault… | Service is not running |
+Every fandom label, author name, ship, and tag is a click-to-filter button — on both cards and in the detail modal.
+
+| Element | What clicking it does |
+|---------|----------------------|
+| Fandom (card or detail) | Filters to stories in that exact fandom |
+| Author (card or detail) | Filters to stories by that exact author |
+| Ship (card or detail) | Filters to stories with that exact relationship |
+| Tag (card or detail) | Filters to stories with that exact freeform tag |
+
+Active filters appear as **chips** in a bar below the search controls, each with an × to remove it and a **Clear all** button to reset all at once. Clicking a filter from within the detail modal closes the modal and applies the filter immediately.
+
+### Story card
+
+Each card shows:
+- Fandom (clickable)
+- Reading status chip + official status chip
+- Ships/relationships (first two, each clickable)
+- Title
+- Author (clickable)
+- Platform badge
+- Freeform tags (first five, each clickable)
+- ◎ if a private file is attached
+- ↗ link — opens the latest known chapter if Continue Reading data exists, otherwise the canonical story URL
+
+### Detail modal
+
+Clicking a card opens a full detail view containing:
+
+- Fandom (clickable), status chips, title, author (clickable)
+- Summary
+- Original URL
+- Metadata table: reading status, current chapter, last/first accessed, times read, rating, word count, chapters (published/total), language, AO3 published date, AO3 updated date, completed date, vault added/updated dates
+- Tag sections: Categories, Archive Warnings, Ships (each clickable), Characters, Freeform tags (each clickable)
+- ↗ Continue Reading button (opens latest chapter URL, or canonical URL)
+- Reading history timeline (all access events, newest-first; empty state if none recorded)
+- Edit and Delete buttons
+
+### Advanced search
+
+Click **⊞ Advanced** to expand a panel with full field-specific search:
+
+| Field | Endpoint parameter |
+|-------|-------------------|
+| Author contains | `authorContains` |
+| Title contains | `titleContains` |
+| Fandom contains | `fandomContains` |
+| Tag contains | `tagContains` |
+| Ship contains | `relationshipContains` |
+| Character contains | `characterContains` |
+| Rating | `rating` |
+| Reading status | `readingStatus` |
+| Language | `language` |
+| Word count range | `minWordCount` / `maxWordCount` |
+| Chapter count range | `minChapters` / `maxChapters` |
+| AO3 published/updated date ranges | `publishedAfter` … `updatedBefore` |
+| Last/first accessed date ranges | `lastAccessedAfter` … `firstAccessedBefore` |
+| Min times read | `minAccessCount` |
+| Chapter accessed | `chapterAccessed` |
+| Sort by / direction | `sortBy` / `sortDir` |
+
+Results show as chips summarising active filters. **✕ Clear all filters** exits advanced mode and returns to the full library.
+
+---
+
+## Auto-Tracking
+
+When the Chrome extension is installed and signed in, reading activity is logged automatically:
+
+1. You open any `archiveofourown.org/works/{id}` page.
+2. The content script detects the work ID and reading mode:
+   - **CHAPTER** — URL contains `/chapters/{id}`; exact chapter number and title are parsed from the chapter dropdown
+   - **WORK_MAIN** — root work URL with no chapter segment; chapter number is set to 1 only if the work is confirmed single-chapter
+   - **FULL_WORK** — URL contains `view_full_work=true`; chapter number is not set
+3. A `POST /api/v1/stories/upsert` call saves or updates the story (merging AO3 metadata without overwriting your notes).
+4. A `POST /api/v1/stories/{id}/access` call logs the visit with chapter, title, URL, and `eventType: PAGE_LOAD`.
+5. A brief toast notification (◆ Saved / ◆ Updated) confirms the action.
+
+**Deduplication:** visits to the same chapter within 5 minutes are silently skipped — refreshing a page does not create duplicate history entries.
+
+**Continue Reading:** each upsert advances `currentChapterUrl` forward (never backward), so the ↗ link in the UI always points to the furthest chapter you have reached. Stories with reading status `FINISHED_READING`, `DNF`, or `ON_HOLD` are never auto-advanced.
 
 ---
 
 ## Authentication
 
-All story, note, file, and download endpoints require a JWT bearer token. Auth endpoints and the web UI static files are public.
+All story, note, file, and history endpoints require a JWT bearer token. Auth endpoints and the web UI static files are public.
 
 ### Get a token
 
@@ -131,8 +196,6 @@ Both return:
 
 ### Use the token
 
-Pass it as a `Bearer` header on every protected request:
-
 ```bash
 TOKEN="eyJhbGci…"
 
@@ -140,34 +203,11 @@ curl -s http://localhost:8080/api/v1/stories \
   -H "Authorization: Bearer $TOKEN" | jq
 ```
 
-Tokens are valid for 24 hours. A 401 response means the token is missing, expired, or invalid.
+Tokens are valid for 30 days. A 401 response means the token is missing, expired, or invalid.
 
 ### Demo account
 
-On first boot, a `demo` user is created with password `demo123`. Any stories that existed before auth was introduced are automatically assigned to this account.
-
----
-
-## End-to-End Flow
-
-```
-Browser (story page)
-    └── story-vault-extension popup  ← or: the built-in web UI at localhost:8080
-            │  POST /api/v1/auth/login  →  JWT token
-            │  POST /api/v1/stories (Bearer token)  →  story saved, ID returned
-            │  POST /api/v1/stories/{id}/notes (if provided)
-            ▼
-        StoryController / NoteController / AuthController
-            └── StoryServiceImpl / NoteServiceImpl / AuthServiceImpl
-                    └── Spring Data JPA
-                            └── PostgreSQL (storyvaultdb, port 5434)
-                                    ├── users
-                                    ├── stories     (user_id FK)
-                                    ├── notes
-                                    └── tags / story_files / download_records
-```
-
-Everything stays on your local machine. Nothing is sent to any external server.
+On first boot a `demo` user is created with password `demo123`. Any stories that existed before auth was introduced are automatically assigned to this account.
 
 ---
 
@@ -175,28 +215,30 @@ Everything stays on your local machine. Nothing is sent to any external server.
 
 ```
 HTTP Request
-    └── JwtAuthFilter               (validates Bearer token before hitting controllers)
-    └── AuthController              (register / login — /api/v1/auth/**)
-    └── StoryController             (CRUD + search — /api/v1/stories/**)
-    └── NoteController              (personal notes — /api/v1/stories/{id}/notes)
-    └── DownloadController          (download history — /api/v1/stories/{id}/downloads)
-    └── StoryFileController         (private file upload/download/delete — /api/v1/stories/{id}/file)
-    └── PublicController            (metadata only, no auth — /api/v1/public/stories/{id})
-            └── AuthService / StoryService / NoteService / DownloadService / StoryFileService
-                    └── *ServiceImpl
-                            └── Repositories  (Spring Data JPA)
-                                    └── HikariCP pool
-                                            └── PostgreSQL
-                                                  ├── users
-                                                  ├── stories
-                                                  ├── tags
-                                                  ├── story_tags   (join table)
-                                                  ├── notes
-                                                  ├── download_records
-                                                  └── story_files  (BYTEA — inline binary)
+    └── JwtAuthFilter                  (validates Bearer token)
+    └── AuthController                 (register / login — /api/v1/auth/**)
+    └── StoryController                (CRUD + upsert + search — /api/v1/stories/**)
+    └── ReadingHistoryController       (access log — /api/v1/stories/{id}/access)
+    └── NoteController                 (personal notes — /api/v1/stories/{id}/notes)
+    └── DownloadController             (download history — /api/v1/stories/{id}/downloads)
+    └── StoryFileController            (private file upload/download — /api/v1/stories/{id}/file)
+    └── PublicController               (no auth — /api/v1/public/stories/{id})
+            └── *ServiceImpl
+                    └── Repositories  (Spring Data JPA + Specifications)
+                            └── HikariCP pool
+                                    └── PostgreSQL
+                                          ├── users
+                                          ├── stories
+                                          ├── reading_history
+                                          ├── tags / story_tags
+                                          ├── story_relationships / story_characters
+                                          ├── story_warnings / story_categories
+                                          ├── notes
+                                          ├── download_records
+                                          └── story_files  (BYTEA)
 ```
 
-Schema is managed exclusively by Flyway. Hibernate is set to `ddl-auto=validate` and will refuse to start if the entity does not match the database.
+Schema managed exclusively by Flyway. Hibernate is set to `ddl-auto=validate`.
 
 ---
 
@@ -205,7 +247,7 @@ Schema is managed exclusively by Flyway. Hibernate is set to `ddl-auto=validate`
 | Component | Library |
 |-----------|---------|
 | Framework | Spring Boot 3.2.5 |
-| Language | Java 17+ |
+| Language | Java 17+ (tested on Java 25) |
 | Persistence | Spring Data JPA + PostgreSQL |
 | Migrations | Flyway |
 | Connection pool | HikariCP |
@@ -214,6 +256,8 @@ Schema is managed exclusively by Flyway. Hibernate is set to `ddl-auto=validate`
 | Boilerplate | Lombok 1.18.38 |
 | Observability | Spring Boot Actuator |
 | Build | Maven 3.8+ |
+| Test — unit | JUnit 5 + Mockito 5 + AssertJ |
+| Test — integration | Spring Boot Test + H2 in-memory |
 
 ---
 
@@ -225,22 +269,49 @@ Schema is managed exclusively by Flyway. Hibernate is set to `ddl-auto=validate`
 
 ---
 
+## Running Tests
+
+Tests use H2 in-memory and do not require PostgreSQL or the Docker container to be running.
+
+```bash
+mvn test
+```
+
+36 tests across four classes:
+
+| Class | Tests | What it covers |
+|-------|-------|----------------|
+| `StoryVaultApplicationTests` | 1 | Context loads with H2 |
+| `ReadingHistoryServiceTest` | 21 | Dedup logic, field mapping, `listByStory` |
+| `StoryServiceTest` | 6 | `findById` response, `advanceReadingProgress` |
+| `StorySearchIntegrationTest` | 8 | Advanced search filtering with real H2 queries |
+
+---
+
 ## Database Migrations
 
 Migrations live in `src/main/resources/db/migration/`.
 
-| Version | File | Description |
-|---------|------|-------------|
-| V1 | `V1__create_stories_table.sql` | Creates `stories` table with indexes |
-| V2 | `V2__create_tags_table.sql` | Creates `tags` table |
-| V3 | `V3__create_story_tags_table.sql` | Creates `story_tags` join table |
-| V4 | `V4__create_notes_table.sql` | Creates `notes` table |
-| V5 | `V5__create_download_records_table.sql` | Creates `download_records` table |
-| V6 | `V6__create_story_files_table.sql` | Creates `story_files` table with BYTEA column |
-| V7 | `V7__add_unique_index_title_author.sql` | Global title+author uniqueness index (dropped by V10) |
-| V8 | `V8__create_users_table.sql` | Creates `users` table |
-| V9 | `V9__add_user_id_to_stories.sql` | Adds `user_id` FK to `stories` |
-| V10 | `V10__update_unique_index_per_user.sql` | Per-user title+author unique index (replaces V7) |
+| Version | Description |
+|---------|-------------|
+| V1 | `stories` table |
+| V2 | `tags` table |
+| V3 | `story_tags` join table |
+| V4 | `notes` table |
+| V5 | `download_records` table |
+| V6 | `story_files` table (BYTEA) |
+| V7 | Global title+author uniqueness index (replaced by V10) |
+| V8 | `users` table |
+| V9 | `user_id` FK on `stories` |
+| V10 | Per-user title+author unique index |
+| V11 | `reading_status`, `current_chapter`, `current_chapter_url`, `last_accessed_at` on `stories` |
+| V12 | `reading_history` table |
+| V13 | Rating enum rename (`GENERAL_AUDIENCES` → `GENERAL`, etc.) |
+| V14 | `source_work_id` on `stories` |
+| V15 | `story_relationships`, `story_characters`, `story_warnings`, `story_categories` element-collection tables |
+| V16 | AO3 metadata fields on `stories` (`ao3_published_date`, `ao3_updated_date`, `language`, `total_chapters`, `word_count`, `chapter_count`, `completed_at`) |
+| V17 | AO3 fields on `reading_history` (`chapter_ao3_id`, `reading_mode`, `chapter_url`, `chapter_title`) |
+| V18 | Event fields on `reading_history` (`user_id`, `work_id`, `event_type`); backfills `PAGE_LOAD` |
 
 ---
 
@@ -249,7 +320,8 @@ Migrations live in `src/main/resources/db/migration/`.
 | Entity | Key fields |
 |--------|-----------|
 | `User` | username (unique), password (BCrypt) |
-| `Story` | title, author, fandom, platform, status, rating, summary, originalUrl, wordCount, chapterCount, tags, user |
+| `Story` | title, author, fandom, platform, status, rating, summary, originalUrl, sourceWorkId, wordCount, chapterCount, totalChapters, ao3PublishedDate, ao3UpdatedDate, language, relationships, characters, archiveWarnings, categories, tags, readingStatus, currentChapter, currentChapterUrl, lastAccessedAt, user |
+| `ReadingHistory` | story, userId, workId, chapterNumber, chapterTitle, chapterUrl, chapterAo3Id, readingMode, sourcePlatform, eventType, accessedAt |
 | `Tag` | name (unique, lowercase) — many-to-many with Story |
 | `Note` | content, createdAt — private, never exposed publicly |
 | `DownloadRecord` | source, notes, downloadedAt — private |
@@ -262,81 +334,104 @@ Migrations live in `src/main/resources/db/migration/`.
 | `platform` | `AO3`, `FFN`, `WATTPAD`, `OTHER` |
 | `status` | `ONGOING`, `COMPLETE`, `HIATUS`, `ABANDONED` |
 | `rating` | `GENERAL`, `TEEN`, `MATURE`, `EXPLICIT`, `NOT_RATED` |
+| `readingStatus` | `WANT_TO_READ`, `STILL_READING`, `CAUGHT_UP`, `FINISHED_READING`, `ON_HOLD`, `DNF`, `REREADING` |
+| `readingMode` | `CHAPTER`, `WORK_MAIN`, `FULL_WORK` |
+| `eventType` | `PAGE_LOAD` (auto-tracked), `MANUAL` (future) |
 
 ---
 
 ## API Reference
 
-### Auth endpoints (no token required)
+### Auth (no token required)
 
 | Method | Path | Status | Description |
 |--------|------|--------|-------------|
-| `POST` | `/api/v1/auth/register` | 201 | Register a new user — returns JWT |
+| `POST` | `/api/v1/auth/register` | 201 | Register — returns JWT |
 | `POST` | `/api/v1/auth/login` | 200 | Login — returns JWT |
 
-**Register request body:**
-
-```json
-{ "username": "myuser", "password": "mypassword" }
-```
-
-Constraints: username 3–100 chars, password min. 6 chars.
-
-### Story endpoints (Bearer token required)
+### Stories (Bearer token required)
 
 | Method | Path | Status | Description |
 |--------|------|--------|-------------|
 | `POST` | `/api/v1/stories` | 201 | Create a story |
-| `GET` | `/api/v1/stories` | 200 | Get all stories for the authenticated user |
-| `GET` | `/api/v1/stories/{id}` | 200 | Get story by ID (must belong to user) |
-| `PUT` | `/api/v1/stories/{id}` | 200 | Update a story |
-| `DELETE` | `/api/v1/stories/{id}` | 200 | Delete a story (cascades to notes, files, download records) |
-| `GET` | `/api/v1/stories/search` | 200 | Search within the user's vault — all params optional |
+| `POST` | `/api/v1/stories/upsert` | 201/200 | Idempotent create-or-merge (used by extension) |
+| `GET` | `/api/v1/stories` | 200 | List all stories for the authenticated user |
+| `GET` | `/api/v1/stories/{id}` | 200 | Get one story (must belong to user) |
+| `PUT` | `/api/v1/stories/{id}` | 200 | Full update |
+| `DELETE` | `/api/v1/stories/{id}` | 200 | Delete (cascades to all child records) |
+| `GET` | `/api/v1/stories/search` | 200 | Simple search — query params: `fandom`, `platform`, `status`, `rating`, `tag` |
+| `POST` | `/api/v1/stories/search` | 200 | Advanced search — full field-specific filtering and sorting |
 
-Search query params: `fandom`, `platform`, `status`, `rating`, `tag` — all optional and combinable.
+**Upsert behaviour:** if the story already exists (matched by AO3 work ID, canonical URL, or title+author), AO3 metadata is merged without touching your notes or reading status. Returns 201 when a new story is created, 200 on update.
 
-### Note endpoints (Bearer token required)
+**`advanceReadingProgress` rules:**
+- Reading status auto-advances: `null`/`WANT_TO_READ` → `STILL_READING` on first visit; `STILL_READING` → `CAUGHT_UP` when current chapter ≥ published chapter count; → `FINISHED_READING` if the work is also COMPLETE.
+- `currentChapter` and `currentChapterUrl` only advance **forward** (higher chapter number). Rereading is the exception — any chapter is accepted.
+- Stories with status `FINISHED_READING`, `DNF`, or `ON_HOLD` are never auto-modified.
+
+### Reading history (Bearer token required)
+
+| Method | Path | Status | Description |
+|--------|------|--------|-------------|
+| `POST` | `/api/v1/stories/{id}/access` | 200 | Log an access event |
+| `GET` | `/api/v1/stories/{id}/access` | 200 | List all access events, newest-first |
+
+**Access request body:**
+
+```json
+{
+  "chapterNumber": 7,
+  "chapterTitle": "Into the Storm",
+  "chapterUrl": "https://archiveofourown.org/works/123/chapters/456",
+  "sourcePlatform": "AO3",
+  "chapterAo3Id": "456",
+  "readingMode": "CHAPTER",
+  "eventType": "PAGE_LOAD"
+}
+```
+
+All fields optional. `eventType` defaults to `PAGE_LOAD` if omitted.
+
+**Deduplication:** a visit is skipped when the most recent history entry matches the same chapter (by `chapterAo3Id` when available, otherwise `chapterNumber`) and was recorded less than 5 minutes ago.
+
+### Notes (Bearer token required)
 
 | Method | Path | Status | Description |
 |--------|------|--------|-------------|
 | `POST` | `/api/v1/stories/{id}/notes` | 201 | Add a personal note |
 | `GET` | `/api/v1/stories/{id}/notes` | 200 | Get all notes for a story |
 
-### Download history endpoints (Bearer token required)
+### Download history (Bearer token required)
 
 | Method | Path | Status | Description |
 |--------|------|--------|-------------|
 | `POST` | `/api/v1/stories/{id}/downloads` | 201 | Log a download |
 | `GET` | `/api/v1/stories/{id}/downloads` | 200 | Get download history |
 
-### File endpoints (Bearer token required)
+### File storage (Bearer token required)
 
 | Method | Path | Status | Description |
 |--------|------|--------|-------------|
-| `POST` | `/api/v1/stories/{id}/file` | 201 | Upload private file (multipart/form-data, field name: `file`) |
-| `GET` | `/api/v1/stories/{id}/file` | 200 | Download private file |
-| `DELETE` | `/api/v1/stories/{id}/file` | 200 | Delete private file |
+| `POST` | `/api/v1/stories/{id}/file` | 201 | Upload (multipart/form-data, field: `file`) |
+| `GET` | `/api/v1/stories/{id}/file` | 200 | Download |
+| `DELETE` | `/api/v1/stories/{id}/file` | 200 | Delete |
 
 Max file size: **50 MB**. One file per story — delete before replacing.
 
-### Public endpoint (no token required)
+### Public (no token required)
 
 | Method | Path | Status | Description |
 |--------|------|--------|-------------|
-| `GET` | `/api/v1/public/stories/{id}` | 200 | Metadata only — safe for sharing |
-
-Returns: title, author, fandom, platform, status, rating, summary, originalUrl, wordCount, chapterCount, tags.
-
-Does **not** return: notes, download records, `hasFile`, `createdAt`, `updatedAt`, or user information.
+| `GET` | `/api/v1/public/stories/{id}` | 200 | Safe metadata — no notes, files, or user info |
 
 ### HTTP status codes
 
 | Status | Scenario |
 |--------|----------|
-| `200 OK` | Successful GET, PUT, DELETE |
-| `201 Created` | Successful POST |
+| `200 OK` | Successful GET, PUT, DELETE, or POST /access |
+| `201 Created` | Successful POST (create, upsert-new, note, download, file) |
 | `400 Bad Request` | Validation failure |
-| `401 Unauthorized` | Missing, expired, or invalid token; wrong credentials on login |
+| `401 Unauthorized` | Missing, expired, or invalid token |
 | `404 Not Found` | Story or file not found (or belongs to a different user) |
 | `409 Conflict` | Duplicate story; file already exists; username taken |
 | `413 Payload Too Large` | File exceeds 50 MB |
@@ -346,7 +441,7 @@ Does **not** return: notes, download records, `hasFile`, `createdAt`, `updatedAt
 
 ## curl Examples
 
-All story/note/file examples require a token. Get one first:
+Get a token first:
 
 ```bash
 TOKEN=$(curl -s -X POST http://localhost:8080/api/v1/auth/login \
@@ -376,26 +471,76 @@ curl -s -X POST http://localhost:8080/api/v1/stories \
   }' | jq
 ```
 
-### Get all stories
+### Upsert (create or merge)
 
 ```bash
-curl -s http://localhost:8080/api/v1/stories \
+curl -s -X POST http://localhost:8080/api/v1/stories/upsert \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $TOKEN" \
+  -d '{
+    "title": "The Raven Cycle",
+    "author": "Maggie Stiefvater",
+    "fandom": "The Raven Cycle",
+    "platform": "AO3",
+    "sourceWorkId": "123456",
+    "chapterCount": 14,
+    "currentChapter": 7,
+    "currentChapterUrl": "https://archiveofourown.org/works/123456/chapters/789"
+  }' | jq
+```
+
+Returns 201 if new, 200 if merged.
+
+### Log a reading access event
+
+```bash
+curl -s -X POST http://localhost:8080/api/v1/stories/1/access \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $TOKEN" \
+  -d '{
+    "chapterNumber": 7,
+    "chapterTitle": "Into the Storm",
+    "chapterUrl": "https://archiveofourown.org/works/123456/chapters/789",
+    "sourcePlatform": "AO3",
+    "chapterAo3Id": "789",
+    "readingMode": "CHAPTER",
+    "eventType": "PAGE_LOAD"
+  }' | jq
+```
+
+### Get reading history for a story
+
+```bash
+curl -s http://localhost:8080/api/v1/stories/1/access \
   -H "Authorization: Bearer $TOKEN" | jq
 ```
 
-### Search
+### Advanced search
 
 ```bash
-# By platform and status
-curl -s "http://localhost:8080/api/v1/stories/search?platform=AO3&status=COMPLETE" \
+curl -s -X POST http://localhost:8080/api/v1/stories/search \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $TOKEN" \
+  -d '{
+    "authorContains": "rowling",
+    "fandomContains": "harry potter",
+    "tagContains": "slow burn",
+    "relationshipContains": "harry/hermione",
+    "minWordCount": 50000,
+    "sortBy": "LAST_ACCESSED",
+    "sortDir": "desc"
+  }' | jq
+```
+
+### Simple search (GET)
+
+```bash
+# By fandom and status
+curl -s "http://localhost:8080/api/v1/stories/search?fandom=raven&status=COMPLETE" \
   -H "Authorization: Bearer $TOKEN" | jq
 
-# By tag (partial match, case-insensitive)
-curl -s "http://localhost:8080/api/v1/stories/search?tag=magic" \
-  -H "Authorization: Bearer $TOKEN" | jq
-
-# By fandom (partial match)
-curl -s "http://localhost:8080/api/v1/stories/search?fandom=raven" \
+# By tag
+curl -s "http://localhost:8080/api/v1/stories/search?tag=slow-burn" \
   -H "Authorization: Bearer $TOKEN" | jq
 ```
 
@@ -408,46 +553,27 @@ curl -s -X POST http://localhost:8080/api/v1/stories/1/notes \
   -d '{"content": "Chapter 7 is a masterpiece."}' | jq
 ```
 
-### Upload a file
+### Upload / download a file
 
 ```bash
 curl -s -X POST http://localhost:8080/api/v1/stories/1/file \
   -H "Authorization: Bearer $TOKEN" \
   -F "file=@/path/to/story.epub" | jq
-```
 
-### Download a file
-
-```bash
 curl -s http://localhost:8080/api/v1/stories/1/file \
   -H "Authorization: Bearer $TOKEN" \
   -o story.epub
 ```
 
-### Delete a story
-
-```bash
-curl -s -X DELETE http://localhost:8080/api/v1/stories/1 \
-  -H "Authorization: Bearer $TOKEN" | jq
-```
-
-### Public metadata view (no token needed)
-
-```bash
-curl -s http://localhost:8080/api/v1/public/stories/1 | jq
-```
-
-### Verify data in PostgreSQL directly
+### Verify data in PostgreSQL
 
 ```bash
 docker exec -it storyvaultdb psql -U postgres -d storyvaultdb
 ```
 
 ```sql
-SELECT id, username FROM users;
-SELECT id, title, author, status, user_id FROM stories ORDER BY id;
-SELECT * FROM tags;
-SELECT id, story_id, content FROM notes;
+SELECT id, title, reading_status, current_chapter, last_accessed_at FROM stories ORDER BY last_accessed_at DESC NULLS LAST;
+SELECT id, story_id, chapter_number, chapter_title, reading_mode, event_type, accessed_at FROM reading_history ORDER BY accessed_at DESC LIMIT 20;
 SELECT version, description, installed_on FROM flyway_schema_history;
 \q
 ```
@@ -458,18 +584,19 @@ SELECT version, description, installed_on FROM flyway_schema_history;
 
 ```bash
 curl -s http://localhost:8080/actuator/health | jq
-curl -s http://localhost:8080/actuator/info | jq
 ```
 
 ---
 
-## Duplicate detection
+## Duplicate Detection
 
-StoryVault considers a story a duplicate when **both** the title and the author match an existing entry for the same user, case-insensitively. The URL is not used as the duplicate key.
+StoryVault considers a story a duplicate when it finds a match on any of these signals (strongest first):
 
-A duplicate returns `409 Conflict` with the existing story in the response body so the caller can surface the existing record ID.
+1. AO3 work ID (`sourceWorkId`) — exact match per user
+2. Canonical URL — normalised (query strings and trailing slashes stripped)
+3. Title + author — case-insensitive, per user
 
-Duplicates are per-user: two different users can save the same title/author pair.
+A `POST /api/v1/stories` duplicate returns `409 Conflict` with the existing story in the response body. `POST /api/v1/stories/upsert` never returns a conflict — it merges metadata into the existing record instead.
 
 ---
 
@@ -477,14 +604,18 @@ Duplicates are per-user: two different users can save the same title/author pair
 
 **`@Lob` on `byte[]` maps to PostgreSQL OID, not BYTEA.** Hibernate's `@Lob` annotation uses PostgreSQL's large-object (OID) system. If the Flyway migration creates the column as `BYTEA`, `ddl-auto=validate` refuses to start with a schema mismatch. Omit `@Lob` — plain `byte[]` maps to `BYTEA` correctly.
 
-**Lombok requires an explicit `annotationProcessorPaths` entry.** Maven's compiler plugin will not pick up Lombok annotation processing from the regular `<dependencies>` block alone. It must be declared separately under `<annotationProcessorPaths>` in the `maven-compiler-plugin` configuration.
+**Lombok requires an explicit `annotationProcessorPaths` entry.** Maven's compiler plugin will not pick up Lombok annotation processing from the regular `<dependencies>` block alone.
 
-**Circular dependency with `AuthenticationManager`.** `SecurityConfig` needs `AuthService` as `UserDetailsService`; `AuthServiceImpl` needs `AuthenticationManager` from `SecurityConfig`. Breaking it with `@Lazy` on the `AuthenticationManager` injection in `AuthServiceImpl` resolves the cycle. `PasswordEncoder` is isolated in a separate `AppConfig` bean to avoid a second cycle.
+**Circular dependency with `AuthenticationManager`.** `SecurityConfig` needs `AuthService` as `UserDetailsService`; `AuthServiceImpl` needs `AuthenticationManager` from `SecurityConfig`. Breaking it with `@Lazy` on the `AuthenticationManager` injection resolves the cycle.
 
-**`ON DELETE CASCADE` keeps orphaned data from accumulating.** All child tables reference `stories(id)` with `ON DELETE CASCADE`. Deleting a story cleans up its notes, files, tags, and download records automatically.
+**Per-user duplicate detection needs a partial unique index.** A global `(lower(title), lower(author))` index blocks different users from saving the same work. The correct constraint is per-user.
 
-**Per-user duplicate detection needs a partial unique index.** A global `(lower(title), lower(author))` index would block different users from saving the same work. The correct constraint is `(lower(title), lower(author), user_id) WHERE user_id IS NOT NULL`, which enforces uniqueness only within a single user's vault.
+**Search uses JPA `Specification` for composable optional filters.** Any combination of fields works without a separate query method for each case.
 
-**Search uses JPA `Specification` for composable optional filters.** Each parameter is independently optional and combined with `AND`, so any combination works without a separate query for each case.
+**`findAllWithTags()` avoids N+1 on the list endpoint.** Without `JOIN FETCH`, accessing tags on each story triggers one extra query per story.
 
-**`findAllWithTags()` avoids N+1 on the list endpoint.** Without `JOIN FETCH`, accessing tags on each story triggers one extra query per story. The custom JPQL query fetches everything in one round trip.
+**Mockito inline mock maker cannot instrument `java.lang.Object` on Java 21+.** The inline mock maker needs to retransform `Object`, which newer JVMs block even with `--add-opens`. The fix is to switch to the subclass mock maker via `src/test/resources/mockito-extensions/org.mockito.plugins.MockMaker` containing `mock-maker-subclass`.
+
+**H2 for tests eliminates the PostgreSQL requirement.** `spring.flyway.enabled=false` + `spring.jpa.hibernate.ddl-auto=create-drop` in `src/test/resources/application.properties` gives a self-contained test environment. Integration tests that need real SQL (JPA Specifications, element-collection JOINs) use `@SpringBootTest` + `@Transactional`, which rolls back after each test.
+
+**Chapter number from dropdown text, not index.** AO3 allows authors to delete chapters, leaving gaps in numbering. Parsing the chapter number from the option's display text (`"12. Chapter Title"` → 12) is accurate regardless of gaps; using `selectedIndex + 1` is not.
