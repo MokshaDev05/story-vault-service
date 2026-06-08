@@ -57,4 +57,8 @@ public class ReadingHistory {
     /** PAGE_LOAD — auto-tracked; MANUAL — user-entered. */
     @Column(name = "event_type", length = 50)
     private String eventType;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "source_account_id")
+    private ConnectedAccount sourceAccount;
 }

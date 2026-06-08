@@ -52,6 +52,20 @@ public class GlobalExceptionHandler {
                 .body(ApiResponse.error(ex.getMessage()));
     }
 
+    @ExceptionHandler(ShelfNotFoundException.class)
+    public ResponseEntity<ApiResponse<Void>> handleShelfNotFound(ShelfNotFoundException ex) {
+        log.warn("Collection not found: {}", ex.getMessage());
+        return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                .body(ApiResponse.error(ex.getMessage()));
+    }
+
+    @ExceptionHandler(ConnectedAccountNotFoundException.class)
+    public ResponseEntity<ApiResponse<Void>> handleAccountNotFound(ConnectedAccountNotFoundException ex) {
+        log.warn("Connected account not found: {}", ex.getMessage());
+        return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                .body(ApiResponse.error(ex.getMessage()));
+    }
+
     @ExceptionHandler(StoryFileNotFoundException.class)
     public ResponseEntity<ApiResponse<Void>> handleFileNotFound(StoryFileNotFoundException ex) {
         log.warn("Story file not found: {}", ex.getMessage());

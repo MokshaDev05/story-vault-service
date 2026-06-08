@@ -1,0 +1,2 @@
+ALTER TABLE stories ADD COLUMN kudos_status    VARCHAR(20) NOT NULL DEFAULT 'UNKNOWN';
+ALTER TABLE stories ADD COLUMN kudos_detected_at TIMESTAMP;

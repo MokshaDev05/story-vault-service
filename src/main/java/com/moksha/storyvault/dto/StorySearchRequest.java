@@ -50,6 +50,9 @@ public class StorySearchRequest {
     private Integer minAccessCount;
     private Integer chapterAccessed;
 
+    // ── Collections ───────────────────────────────────────────────────────────
+    private Long collectionId;
+
     // ── Sort ──────────────────────────────────────────────────────────────────
     @Builder.Default
     private SortField sortBy = SortField.LAST_ACCESSED;

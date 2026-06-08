@@ -22,4 +22,5 @@ public class ReadingHistoryResponse {
     private String chapterAo3Id;
     private String readingMode;
     private String eventType;
+    private Long sourceAccountId;
 }

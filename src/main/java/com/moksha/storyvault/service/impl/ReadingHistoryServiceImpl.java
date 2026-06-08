@@ -98,6 +98,7 @@ public class ReadingHistoryServiceImpl implements ReadingHistoryService {
                 .chapterAo3Id(h.getChapterAo3Id())
                 .readingMode(h.getReadingMode())
                 .eventType(h.getEventType())
+                .sourceAccountId(h.getSourceAccount() != null ? h.getSourceAccount().getId() : null)
                 .build();
     }
 }

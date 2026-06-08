@@ -1,11 +1,13 @@
 package com.moksha.storyvault.model;
 
+import com.moksha.storyvault.model.enums.KudosStatus;
 import com.moksha.storyvault.model.enums.Platform;
 import com.moksha.storyvault.model.enums.Rating;
 import com.moksha.storyvault.model.enums.ReadingStatus;
 import com.moksha.storyvault.model.enums.StoryStatus;
 import jakarta.persistence.*;
 import lombok.*;
+import org.hibernate.annotations.BatchSize;
 import org.hibernate.annotations.CreationTimestamp;
 import org.hibernate.annotations.UpdateTimestamp;
 
@@ -124,6 +126,10 @@ public class Story {
 
     @OneToMany(mappedBy = "story", cascade = CascadeType.ALL, orphanRemoval = true)
     @Builder.Default
+    private List<ReadingHistory> readingHistory = new ArrayList<>();
+
+    @OneToMany(mappedBy = "story", cascade = CascadeType.ALL, orphanRemoval = true)
+    @Builder.Default
     private List<Note> notes = new ArrayList<>();
 
     @OneToMany(mappedBy = "story", cascade = CascadeType.ALL, orphanRemoval = true)
@@ -146,7 +152,24 @@ public class Story {
     @Column(name = "last_accessed_at")
     private LocalDateTime lastAccessedAt;
 
+    @Enumerated(EnumType.STRING)
+    @Column(name = "kudos_status", length = 20)
+    @Builder.Default
+    private KudosStatus kudosStatus = KudosStatus.UNKNOWN;
+
+    @Column(name = "kudos_detected_at")
+    private LocalDateTime kudosDetectedAt;
+
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "user_id")
     private User user;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "source_account_id")
+    private ConnectedAccount sourceAccount;
+
+    @ManyToMany(mappedBy = "stories", fetch = FetchType.LAZY)
+    @BatchSize(size = 30)
+    @Builder.Default
+    private Set<Shelf> collections = new HashSet<>();
 }

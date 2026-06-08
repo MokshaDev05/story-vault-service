@@ -1,5 +1,6 @@
 package com.moksha.storyvault.dto;
 
+import com.moksha.storyvault.model.enums.KudosStatus;
 import com.moksha.storyvault.model.enums.Platform;
 import com.moksha.storyvault.model.enums.Rating;
 import com.moksha.storyvault.model.enums.ReadingStatus;
@@ -85,4 +86,8 @@ public class StoryRequest {
 
     @Size(max = 2048, message = "Chapter URL must not exceed 2048 characters")
     private String currentChapterUrl;
+
+    private KudosStatus kudosStatus;
+
+    private Long sourceAccountId;
 }

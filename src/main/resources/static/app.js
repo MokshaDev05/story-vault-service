@@ -3,11 +3,16 @@
 const API = 'http://localhost:8080/api/v1';
 
 let allStories = [];
+let allCollections = [];
 let token = localStorage.getItem('sv_token');
 let editingStoryId = null;
 let advancedMode = false;      // true when showing POST /search results
 let advPanelOpen = false;
 let quickFilters = {};         // active field-specific filters: {author, fandom, tag, relationship}
+let vaultOpen = false;
+let privacyMode = false;
+let dataLoaded = false;
+let currentView = 'library';
 
 // ─── Init ─────────────────────────────────────────────────────────────────────
 
@@ -21,7 +26,13 @@ document.addEventListener('DOMContentLoaded', () => {
 
 function boot() {
   showApp();
-  fetchStories();
+  navigateTo('library');
+  loadVaultState();
+  if (vaultOpen) {
+    dataLoaded = true;
+    fetchStories();
+    fetchCollections();
+  }
 }
 
 // ─── Theme ────────────────────────────────────────────────────────────────────
@@ -263,7 +274,12 @@ function logout() {
   token = null;
   localStorage.removeItem('sv_token');
   allStories = [];
+  allCollections = [];
   quickFilters = {};
+  vaultOpen = false;
+  dataLoaded = false;
+  currentView = 'library';
+  closeNavDrawer();
   el('cards-grid').innerHTML = '';
   const headerUser = el('header-username');
   if (headerUser) { headerUser.textContent = ''; headerUser.classList.add('hidden'); }
@@ -360,14 +376,188 @@ async function fetchReadingHistory(storyId) {
   }
 }
 
+async function fetchNotes(storyId) {
+  try {
+    const res = await fetch(`${API}/stories/${storyId}/notes`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (!res.ok) return [];
+    const body = await res.json();
+    return body.data || [];
+  } catch {
+    return [];
+  }
+}
+
+async function fetchCollections() {
+  try {
+    const res = await fetch(`${API}/collections`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (!res.ok) return;
+    const body = await res.json();
+    allCollections = body.data || [];
+    renderCollectionFilter();
+    if (currentView === 'collections') renderCollectionsPage();
+  } catch {}
+}
+
+function renderCollectionFilter() {
+  const sel = el('filter-collection');
+  if (!sel) return;
+  const current = sel.value;
+  while (sel.options.length > 1) sel.remove(1);
+  allCollections.forEach(c => {
+    const opt = document.createElement('option');
+    opt.value = String(c.id);
+    opt.textContent = c.name;
+    sel.add(opt);
+  });
+  if (current) sel.value = current;
+}
+
+// ─── Collections modal ────────────────────────────────────────────────────────
+
+async function openCollectionsModal() {
+  el('collections-modal').classList.remove('hidden');
+  document.body.style.overflow = 'hidden';
+  resetCollectionForm();
+  await renderCollectionsList();
+}
+
+function closeCollectionsModal() {
+  el('collections-modal').classList.add('hidden');
+  document.body.style.overflow = '';
+}
+
+async function renderCollectionsList() {
+  const container = el('collections-list');
+  container.innerHTML = '<p class="loading-state" style="padding:12px 0;">Loading…</p>';
+  try {
+    const res = await fetch(`${API}/collections`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (res.status === 401) { handleUnauthorized(); return; }
+    const body = await res.json();
+    const collections = body.data || [];
+    if (collections.length === 0) {
+      container.innerHTML = '<p class="history-empty" style="padding:8px 0 16px;">No collections yet.</p>';
+      return;
+    }
+    container.innerHTML = collections.map(c => `
+      <div class="account-row" data-id="${c.id}">
+        <div class="account-row-info">
+          <span class="account-display-name">${esc(c.name)}</span>
+          <span class="account-label-chip">${c.storyCount} ${c.storyCount === 1 ? 'story' : 'stories'}</span>
+        </div>
+        <div class="account-row-actions">
+          <button class="btn btn-ghost btn-sm coll-edit-btn" data-id="${c.id}" data-name="${escA(c.name)}">Rename</button>
+          <button class="btn btn-danger btn-sm coll-delete-btn" data-id="${c.id}">Delete</button>
+        </div>
+      </div>`).join('');
+
+    container.querySelectorAll('.coll-edit-btn').forEach(btn => {
+      btn.addEventListener('click', () => startRenameCollection(btn.dataset.id, btn.dataset.name));
+    });
+    container.querySelectorAll('.coll-delete-btn').forEach(btn => {
+      btn.addEventListener('click', () => confirmDeleteCollectionFromList(btn.dataset.id, btn));
+    });
+  } catch {
+    container.innerHTML = '<p class="fetch-error" style="padding:8px 0;">Could not load collections.</p>';
+  }
+}
+
+function resetCollectionForm() {
+  el('collection-form').reset();
+  el('collection-editing-id').value = '';
+  el('collection-form-title').textContent = 'New Collection';
+  el('collection-submit-btn').textContent = 'Create';
+  el('collection-submit-btn').disabled = false;
+  el('collection-form-error').classList.add('hidden');
+}
+
+function startRenameCollection(id, name) {
+  el('collection-editing-id').value = id;
+  el('coll-name').value = name;
+  el('collection-form-title').textContent = 'Rename Collection';
+  el('collection-submit-btn').textContent = 'Save';
+  el('collection-submit-btn').disabled = false;
+  el('collection-form-error').classList.add('hidden');
+  el('collection-form').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
+
+async function submitCollectionForm(e) {
+  e.preventDefault();
+  const errEl  = el('collection-form-error');
+  const btn    = el('collection-submit-btn');
+  const editId = el('collection-editing-id').value;
+  const name   = el('coll-name').value.trim();
+
+  errEl.classList.add('hidden');
+
+  if (!name) {
+    errEl.textContent = 'Collection name is required.';
+    errEl.classList.remove('hidden');
+    return;
+  }
+
+  btn.disabled    = true;
+  btn.textContent = 'Saving…';
+
+  try {
+    const url    = editId ? `${API}/collections/${editId}` : `${API}/collections`;
+    const method = editId ? 'PUT' : 'POST';
+    const res = await fetch(url, {
+      method,
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name }),
+    });
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}));
+      throw new Error(body.message || `HTTP ${res.status}`);
+    }
+    resetCollectionForm();
+    await fetchCollections();
+    await renderCollectionsList();
+  } catch (err) {
+    errEl.textContent = `Failed to save: ${err.message}`;
+    errEl.classList.remove('hidden');
+    btn.disabled    = false;
+    btn.textContent = editId ? 'Save' : 'Create';
+  }
+}
+
+async function confirmDeleteCollectionFromList(id, btn) {
+  if (!btn.dataset.confirming) {
+    btn.dataset.confirming = '1';
+    btn.textContent = 'Confirm?';
+    return;
+  }
+  btn.disabled    = true;
+  btn.textContent = 'Deleting…';
+  try {
+    const res = await fetch(`${API}/collections/${id}`, {
+      method: 'DELETE', headers: { Authorization: `Bearer ${token}` },
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    await fetchCollections();
+    await renderCollectionsList();
+  } catch {
+    btn.disabled    = false;
+    btn.textContent = 'Delete failed';
+  }
+}
+
 // ─── Filters ──────────────────────────────────────────────────────────────────
 
 function applyFilters() {
   if (advancedMode) return;  // advanced search results are already rendered
 
-  const search   = el('search-input').value.toLowerCase().trim();
-  const platform = el('filter-platform').value;
-  const status   = el('filter-status').value;
+  const search     = el('search-input').value.toLowerCase().trim();
+  const platform   = el('filter-platform').value;
+  const status     = el('filter-status').value;
+  const kudos      = el('filter-kudos').value;
+  const collFilter = el('filter-collection').value;
 
   let list = allStories;
 
@@ -383,6 +573,10 @@ function applyFilters() {
   }
   if (platform) list = list.filter(s => s.platform === platform);
   if (status)   list = list.filter(s => s.status   === status);
+  if (kudos === 'GIVEN')     list = list.filter(s => s.kudosStatus === 'GIVEN');
+  if (kudos === 'NOT_GIVEN') list = list.filter(s => s.kudosStatus !== 'GIVEN');
+  if (collFilter) list = list.filter(s =>
+    (s.collections || []).some(c => String(c.id) === collFilter));
 
   if (quickFilters.author)
     list = list.filter(s => s.author.toLowerCase() === quickFilters.author.toLowerCase());
@@ -630,7 +824,11 @@ function cardHTML(s) {
   const urlIcon = continueCardUrl
     ? `<a href="${escA(continueCardUrl)}" target="_blank" rel="noopener noreferrer" class="card-url-link" title="${s.currentChapterUrl ? 'Continue Reading' : 'Open original'}" onclick="event.stopPropagation()">↗</a>`
     : '';
-  const fileIcon = s.hasFile ? `<span class="card-file-icon" title="File attached">◎</span>` : '';
+  const fileIcon  = s.hasFile ? `<span class="card-file-icon" title="File attached">◎</span>` : '';
+  const kudosIcon = s.kudosStatus === 'GIVEN' ? `<span class="card-kudos-icon" title="Kudosed">♥</span>` : '';
+  const collChips = (s.collections || []).slice(0, 3).map(c =>
+    `<span class="collection-chip collection-chip-card">${esc(c.name)}</span>`).join('');
+  const collRow = collChips ? `<div class="card-collections">${collChips}</div>` : '';
 
   return `
     <article class="story-card" data-id="${s.id}" tabindex="0" role="button" aria-label="${escA(s.title)}">
@@ -646,10 +844,11 @@ function cardHTML(s) {
       <h2 class="card-title">${esc(s.title)}</h2>
       <p class="card-author">by <button class="card-author-btn" data-filter-key="author" data-filter-val="${escA(s.author)}">${esc(s.author)}</button></p>
       <div class="card-rule"></div>
+      ${collRow}
       <div class="card-meta">
         <span class="platform-badge">${PLATFORM_LABELS[s.platform] || s.platform}</span>
         <div class="card-tags">${tags}</div>
-        <div class="card-icons">${fileIcon}${urlIcon}</div>
+        <div class="card-icons">${fileIcon}${kudosIcon}${urlIcon}</div>
       </div>
     </article>`;
 }
@@ -701,6 +900,8 @@ function openDetail(s) {
     ...(s.completedAt      ? [['Completed',     fmtDate(s.completedAt)]]          : []),
     ['Added',        fmtDate(s.createdAt)],
     ['Last updated', fmtDate(s.updatedAt)],
+    ...(s.kudosStatus && s.kudosStatus !== 'UNKNOWN'
+        ? [['Kudos', KUDOS_LABELS[s.kudosStatus] || s.kudosStatus]] : []),
   ].map(([label, value]) => `
     <div class="detail-row">
       <span class="detail-label">${label}</span>
@@ -746,6 +947,8 @@ function openDetail(s) {
         <button class="btn btn-danger" id="detail-delete-btn">Delete</button>
       </div>
     </div>
+    <div id="detail-collections"></div>
+    <div id="detail-notes"></div>
     <div id="detail-history"></div>
   `;
 
@@ -789,8 +992,12 @@ function openDetail(s) {
     }
   });
 
+  loadDetailCollections(s.id, s.collections || []);
   loadReadingHistory(s.id);
+  loadNotes(s.id);
 }
+
+const HISTORY_MODE_LABELS = { CHAPTER: 'chapter', WORK_MAIN: 'main', FULL_WORK: 'full work' };
 
 async function loadReadingHistory(storyId) {
   const history = await fetchReadingHistory(storyId);
@@ -803,10 +1010,17 @@ async function loadReadingHistory(storyId) {
         const chapterDetail = h.chapterNumber ? `Ch. ${h.chapterNumber}` : '';
         const titleDetail   = h.chapterTitle  ? esc(h.chapterTitle)      : '';
         const detail = [chapterDetail, titleDetail].filter(Boolean).join(' — ') || 'Read';
+        const modeLabel = h.readingMode ? (HISTORY_MODE_LABELS[h.readingMode] || h.readingMode.toLowerCase()) : '';
+        const modeBadge = modeLabel ? `<span class="history-mode">${modeLabel}</span>` : '';
+        const linkIcon  = h.chapterUrl
+          ? `<a class="history-link" href="${escA(h.chapterUrl)}" target="_blank" rel="noopener noreferrer" title="Open this chapter">↗</a>`
+          : '';
         return `
           <div class="history-entry">
             <span class="history-date">${fmtDate(h.accessedAt)}</span>
             <span class="history-detail">${detail}</span>
+            ${modeBadge}
+            ${linkIcon}
           </div>`;
       }).join('');
 
@@ -816,6 +1030,96 @@ async function loadReadingHistory(storyId) {
       <div class="history-label">Reading History</div>
       <div class="history-list">${body}</div>
     </div>`;
+}
+
+async function loadNotes(storyId) {
+  const notes = await fetchNotes(storyId);
+  const container = el('detail-notes');
+  if (!container || notes.length === 0) return;
+  const body = notes.map(n => `
+    <div class="note-entry">
+      <p class="note-content">${esc(n.content)}</p>
+      <span class="note-date">${fmtDate(n.createdAt)}</span>
+    </div>`).join('');
+  container.innerHTML = `
+    <hr class="modal-rule" />
+    <div class="history-section">
+      <div class="history-label">Notes</div>
+      <div class="notes-list">${body}</div>
+    </div>`;
+}
+
+function loadDetailCollections(storyId, currentCollections) {
+  const container = el('detail-collections');
+  if (!container) return;
+
+  const render = (cols) => {
+    const currentChips = cols.length === 0
+      ? '<span style="color:var(--text-muted);font-size:13px;">Not in any collection.</span>'
+      : cols.map(c => `
+          <span class="collection-chip">
+            ${esc(c.name)}
+            <button class="collection-chip-remove" data-coll-id="${c.id}" data-story-id="${storyId}" title="Remove from ${escA(c.name)}">✕</button>
+          </span>`).join('');
+
+    const available = allCollections.filter(ac => !cols.some(c => c.id === ac.id));
+    const addOptions = available.length === 0 ? '' : `
+      <div class="collections-add-row">
+        <select class="filter-select collections-add-sel" id="detail-coll-add-sel">
+          <option value="">Add to collection…</option>
+          ${available.map(c => `<option value="${c.id}">${esc(c.name)}</option>`).join('')}
+        </select>
+        <button class="btn btn-ghost btn-sm" id="detail-coll-add-btn">Add</button>
+      </div>`;
+
+    container.innerHTML = `
+      <hr class="modal-rule" />
+      <div class="history-section">
+        <div class="history-label">Collections</div>
+        <div class="detail-collections-chips">${currentChips}</div>
+        ${addOptions}
+      </div>`;
+
+    container.querySelectorAll('.collection-chip-remove').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        const collId = btn.dataset.collId;
+        await fetch(`${API}/collections/${collId}/stories/${storyId}`, {
+          method: 'DELETE', headers: { Authorization: `Bearer ${token}` },
+        });
+        const updated = cols.filter(c => String(c.id) !== collId);
+        patchStoryCollections(storyId, updated);
+        render(updated);
+      });
+    });
+
+    const addBtn = el('detail-coll-add-btn');
+    if (addBtn) {
+      addBtn.addEventListener('click', async () => {
+        const sel = el('detail-coll-add-sel');
+        const collId = sel.value;
+        if (!collId) return;
+        const res = await fetch(`${API}/collections/${collId}/stories/${storyId}`, {
+          method: 'POST', headers: { Authorization: `Bearer ${token}` },
+        });
+        if (res.ok) {
+          const newColl = allCollections.find(c => String(c.id) === collId);
+          if (newColl) {
+            const updated = [...cols, { id: newColl.id, name: newColl.name }];
+            updated.sort((a, b) => a.name.localeCompare(b.name));
+            patchStoryCollections(storyId, updated);
+            render(updated);
+          }
+        }
+      });
+    }
+  };
+
+  render(currentCollections);
+}
+
+function patchStoryCollections(storyId, collections) {
+  const idx = allStories.findIndex(s => s.id === storyId);
+  if (idx !== -1) allStories[idx] = { ...allStories[idx], collections };
 }
 
 function closeDetail() {
@@ -955,7 +1259,21 @@ function bindEvents() {
   el('register-btn').addEventListener('click', register);
   el('reg-confirm').addEventListener('keydown', e => { if (e.key === 'Enter') register(); });
 
-  el('logout-btn').addEventListener('click', logout);
+  el('vault-toggle-btn').addEventListener('click', () => vaultOpen ? closeVault() : openVault());
+  el('open-vault-btn').addEventListener('click', openVault);
+  el('menu-btn').addEventListener('click', openNavDrawer);
+  el('nav-close-btn').addEventListener('click', closeNavDrawer);
+  el('nav-overlay').addEventListener('click', closeNavDrawer);
+  el('nav-logout-btn').addEventListener('click', logout);
+  el('nav-privacy-btn').addEventListener('click', togglePrivacyMode);
+  el('page-manage-collections-btn').addEventListener('click', openCollectionsModal);
+  el('page-add-account-btn').addEventListener('click', openAccountsModal);
+  el('settings-theme-btn').addEventListener('click', toggleTheme);
+  el('settings-density-btn').addEventListener('click', toggleDensity);
+  el('settings-privacy-btn').addEventListener('click', togglePrivacyMode);
+  document.querySelectorAll('.nav-item[data-view]').forEach(btn => {
+    btn.addEventListener('click', () => navigateTo(btn.dataset.view));
+  });
   el('theme-btn').addEventListener('click', toggleTheme);
   el('density-btn').addEventListener('click', toggleDensity);
   document.querySelectorAll('.metal-btn').forEach(btn => {
@@ -980,6 +1298,7 @@ function bindEvents() {
   el('search-input').addEventListener('input', applyFilters);
   el('filter-platform').addEventListener('change', applyFilters);
   el('filter-status').addEventListener('change', applyFilters);
+  el('filter-kudos').addEventListener('change', applyFilters);
 
   el('adv-toggle-btn').addEventListener('click', toggleAdvPanel);
   el('adv-search-btn').addEventListener('click', runAdvancedSearch);
@@ -990,6 +1309,17 @@ function bindEvents() {
   el('add-modal-close').addEventListener('click', closeAddModal);
   el('add-cancel-btn').addEventListener('click', closeAddModal);
   el('add-modal').addEventListener('click', e => { if (e.target === e.currentTarget) closeAddModal(); });
+
+  el('collections-modal-close').addEventListener('click', closeCollectionsModal);
+  el('collections-modal').addEventListener('click', e => { if (e.target === e.currentTarget) closeCollectionsModal(); });
+  el('collection-form').addEventListener('submit', submitCollectionForm);
+  el('collection-cancel-btn').addEventListener('click', resetCollectionForm);
+  el('filter-collection').addEventListener('change', applyFilters);
+
+  el('accounts-modal-close').addEventListener('click', closeAccountsModal);
+  el('accounts-modal').addEventListener('click', e => { if (e.target === e.currentTarget) closeAccountsModal(); });
+  el('account-form').addEventListener('submit', submitAccountForm);
+  el('account-cancel-btn').addEventListener('click', resetAccountForm);
 
   el('detail-close').addEventListener('click', closeDetail);
   el('detail-modal').addEventListener('click', e => { if (e.target === e.currentTarget) closeDetail(); });
@@ -1004,8 +1334,12 @@ function bindEvents() {
 
   document.addEventListener('keydown', e => {
     if (e.key !== 'Escape') return;
-    if (!el('detail-modal').classList.contains('hidden')) closeDetail();
+    if (el('nav-drawer').classList.contains('is-open')) closeNavDrawer();
+    else if (!el('collections-modal').classList.contains('hidden')) closeCollectionsModal();
+    else if (!el('accounts-modal').classList.contains('hidden')) closeAccountsModal();
+    else if (!el('detail-modal').classList.contains('hidden')) closeDetail();
     else if (!el('add-modal').classList.contains('hidden')) closeAddModal();
+    else if (vaultOpen) closeVault();
   });
 
   initCompactHeader();
@@ -1031,6 +1365,9 @@ const RATING_LABELS = {
 const PLATFORM_LABELS = {
   AO3: 'AO3', FFN: 'FFN', WATTPAD: 'Wattpad', OTHER: 'Other',
 };
+const KUDOS_LABELS = {
+  GIVEN: '♥ Kudosed', NOT_DETECTED: 'Not given', UNKNOWN: '',
+};
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -1050,4 +1387,322 @@ function fmtDate(iso) {
   try {
     return new Date(iso).toLocaleDateString('en-GB', { day:'numeric', month:'long', year:'numeric' });
   } catch { return iso; }
+}
+
+// ─── Vault Privacy ────────────────────────────────────────────────────────────
+
+function loadVaultState() {
+  privacyMode = localStorage.getItem('sv_privacy_mode') === '1';
+  updatePrivacyModeBtn();
+  vaultOpen = !privacyMode && localStorage.getItem('sv_vault_open') === '1';
+  applyVaultState(false);
+}
+
+function applyVaultState(animate) {
+  const stage      = el('vault-stage');
+  const closedScr  = el('vault-closed-screen');
+  const toggleBtn  = el('vault-toggle-btn');
+
+  if (vaultOpen) {
+    closedScr.classList.add('hidden');
+    stage.classList.remove('hidden');
+    if (animate) {
+      stage.classList.remove('vault-fade-in');
+      void stage.offsetWidth; // force reflow
+      stage.classList.add('vault-fade-in');
+    }
+    if (toggleBtn) toggleBtn.textContent = '▲ Close Vault';
+  } else {
+    stage.classList.add('hidden');
+    closedScr.classList.remove('hidden');
+    if (animate) {
+      closedScr.classList.remove('vault-fade-in');
+      void closedScr.offsetWidth;
+      closedScr.classList.add('vault-fade-in');
+    }
+    if (toggleBtn) toggleBtn.textContent = '▼ Open Vault';
+  }
+}
+
+function openVault() {
+  vaultOpen = true;
+  if (!privacyMode) localStorage.setItem('sv_vault_open', '1');
+  applyVaultState(true);
+  if (!dataLoaded) {
+    dataLoaded = true;
+    fetchStories();
+    fetchCollections();
+  }
+}
+
+function closeVault() {
+  vaultOpen = false;
+  if (!privacyMode) localStorage.removeItem('sv_vault_open');
+  applyVaultState(true);
+}
+
+function togglePrivacyMode() {
+  privacyMode = !privacyMode;
+  if (privacyMode) {
+    localStorage.setItem('sv_privacy_mode', '1');
+    localStorage.removeItem('sv_vault_open');
+  } else {
+    localStorage.removeItem('sv_privacy_mode');
+  }
+  updatePrivacyModeBtn();
+}
+
+function updatePrivacyModeBtn() {
+  const badge = el('nav-privacy-status');
+  if (badge) badge.textContent = privacyMode ? 'On' : 'Off';
+  if (currentView === 'settings') updateSettingsPage();
+}
+
+// ─── Navigation ───────────────────────────────────────────────────────────────
+
+function openNavDrawer() {
+  el('nav-drawer').classList.add('is-open');
+  el('nav-overlay').classList.add('is-open');
+  el('menu-btn').setAttribute('aria-expanded', 'true');
+  el('nav-drawer').setAttribute('aria-hidden', 'false');
+}
+
+function closeNavDrawer() {
+  el('nav-drawer').classList.remove('is-open');
+  el('nav-overlay').classList.remove('is-open');
+  el('menu-btn').setAttribute('aria-expanded', 'false');
+  el('nav-drawer').setAttribute('aria-hidden', 'true');
+}
+
+function navigateTo(view) {
+  closeNavDrawer();
+  currentView = view;
+  document.querySelectorAll('.view').forEach(v => v.classList.add('hidden'));
+  const target = el('view-' + view);
+  if (target) target.classList.remove('hidden');
+  document.querySelectorAll('.nav-item[data-view]').forEach(btn => {
+    btn.classList.toggle('nav-active', btn.dataset.view === view);
+  });
+  if (view === 'collections') renderCollectionsPage();
+  if (view === 'accounts')    renderAccountsPage();
+  if (view === 'settings')    updateSettingsPage();
+}
+
+function renderCollectionsPage() {
+  const grid = el('page-collections-grid');
+  if (!grid) return;
+  if (allCollections.length === 0) {
+    grid.innerHTML = '<p class="page-empty-note">No collections yet. Use the button above to create one.</p>';
+    return;
+  }
+  grid.innerHTML = allCollections.map(c => `
+    <div class="page-collection-card">
+      <p class="page-coll-name">${esc(c.name)}</p>
+      <p class="page-coll-count">${c.storyCount} ${c.storyCount === 1 ? 'story' : 'stories'}</p>
+      <div class="page-coll-actions">
+        <button class="btn btn-ghost btn-sm page-coll-filter-btn" data-id="${c.id}" data-name="${escA(c.name)}"
+          title="Show only stories in this collection">Browse</button>
+      </div>
+    </div>`).join('');
+  grid.querySelectorAll('.page-coll-filter-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      navigateTo('library');
+      const sel = el('filter-collection');
+      if (sel) { sel.value = btn.dataset.id; applyFilters(); }
+    });
+  });
+}
+
+async function renderAccountsPage() {
+  const container = el('page-accounts-list');
+  if (!container) return;
+  container.innerHTML = '<p class="loading-state" style="padding:12px 0;">Loading…</p>';
+  try {
+    const res = await fetch(`${API}/accounts`, { headers: { Authorization: `Bearer ${token}` } });
+    if (res.status === 401) { handleUnauthorized(); return; }
+    const body = await res.json();
+    const accounts = body.data || [];
+    if (accounts.length === 0) {
+      container.innerHTML = '<p class="page-empty-note">No connected accounts yet.</p>';
+      return;
+    }
+    container.innerHTML = accounts.map(a => `
+      <div class="account-row">
+        <div class="account-row-info">
+          <span class="platform-badge">${ACCOUNT_PLATFORM_LABELS[a.platform] || a.platform}</span>
+          <span class="account-display-name">${esc(a.displayName)}</span>
+          ${a.accountLabel ? `<span class="account-label-chip">${esc(a.accountLabel)}</span>` : ''}
+          ${!a.syncEnabled ? '<span class="account-sync-off">sync off</span>' : ''}
+        </div>
+        <div class="account-row-actions">
+          <button class="btn btn-ghost btn-sm" onclick="openAccountsModal()">Edit</button>
+        </div>
+      </div>`).join('');
+  } catch {
+    container.innerHTML = '<p class="fetch-error" style="padding:8px 0;">Could not load accounts.</p>';
+  }
+}
+
+function updateSettingsPage() {
+  const pBtn = el('settings-privacy-btn');
+  const pSts = el('settings-privacy-status');
+  if (pBtn && pSts) {
+    pBtn.classList.toggle('is-on', privacyMode);
+    pSts.textContent = privacyMode ? 'On' : 'Off';
+  }
+}
+
+// ─── Connected Accounts ───────────────────────────────────────────────────────
+
+const ACCOUNT_PLATFORM_LABELS = { AO3: 'AO3', FFN: 'FFN', WATTPAD: 'Wattpad', OTHER: 'Other' };
+
+async function openAccountsModal() {
+  el('accounts-modal').classList.remove('hidden');
+  document.body.style.overflow = 'hidden';
+  resetAccountForm();
+  await renderAccountsList();
+}
+
+function closeAccountsModal() {
+  el('accounts-modal').classList.add('hidden');
+  document.body.style.overflow = '';
+}
+
+async function renderAccountsList() {
+  const container = el('accounts-list');
+  container.innerHTML = '<p class="loading-state" style="padding:12px 0;">Loading…</p>';
+  try {
+    const res = await fetch(`${API}/accounts`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (res.status === 401) { handleUnauthorized(); return; }
+    const body = await res.json();
+    const accounts = body.data || [];
+    if (accounts.length === 0) {
+      container.innerHTML = '<p class="history-empty" style="padding:8px 0 16px;">No connected accounts yet.</p>';
+      return;
+    }
+    container.innerHTML = accounts.map(a => `
+      <div class="account-row" data-id="${a.id}">
+        <div class="account-row-info">
+          <span class="platform-badge">${ACCOUNT_PLATFORM_LABELS[a.platform] || a.platform}</span>
+          <span class="account-display-name">${esc(a.displayName)}</span>
+          ${a.accountLabel ? `<span class="account-label-chip">${esc(a.accountLabel)}</span>` : ''}
+          ${!a.syncEnabled ? '<span class="account-sync-off">sync off</span>' : ''}
+        </div>
+        <div class="account-row-actions">
+          <button class="btn btn-ghost btn-sm account-edit-btn" data-id="${a.id}">Edit</button>
+          <button class="btn btn-danger btn-sm account-delete-btn" data-id="${a.id}">Delete</button>
+        </div>
+      </div>`).join('');
+
+    container.querySelectorAll('.account-edit-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const acct = accounts.find(a => String(a.id) === btn.dataset.id);
+        if (acct) startEditAccount(acct);
+      });
+    });
+    container.querySelectorAll('.account-delete-btn').forEach(btn => {
+      btn.addEventListener('click', () => confirmDeleteAccount(btn.dataset.id, btn));
+    });
+  } catch {
+    container.innerHTML = '<p class="fetch-error" style="padding:8px 0;">Could not load accounts.</p>';
+  }
+}
+
+function resetAccountForm() {
+  el('account-form').reset();
+  el('account-editing-id').value = '';
+  el('account-form-title').textContent = 'Add Account';
+  el('account-submit-btn').textContent = 'Add Account';
+  el('account-submit-btn').disabled = false;
+  el('account-form-error').classList.add('hidden');
+}
+
+function startEditAccount(acct) {
+  el('account-editing-id').value = acct.id;
+  el('acct-platform').value      = acct.platform || 'AO3';
+  el('acct-display-name').value  = acct.displayName || '';
+  el('acct-profile-url').value   = acct.profileUrl  || '';
+  el('acct-label').value         = acct.accountLabel || '';
+  el('acct-notes').value         = acct.notes        || '';
+  el('account-form-title').textContent  = 'Edit Account';
+  el('account-submit-btn').textContent  = 'Save Changes';
+  el('account-submit-btn').disabled     = false;
+  el('account-form-error').classList.add('hidden');
+  el('account-form').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
+
+async function submitAccountForm(e) {
+  e.preventDefault();
+  const errEl  = el('account-form-error');
+  const btn    = el('account-submit-btn');
+  const editId = el('account-editing-id').value;
+
+  errEl.classList.add('hidden');
+
+  const displayName = el('acct-display-name').value.trim();
+  if (!displayName) {
+    errEl.textContent = 'Display name is required.';
+    errEl.classList.remove('hidden');
+    return;
+  }
+
+  const data = {
+    platform:     el('acct-platform').value,
+    displayName,
+    profileUrl:   el('acct-profile-url').value.trim() || null,
+    accountLabel: el('acct-label').value.trim()       || null,
+    syncEnabled:  true,
+    notes:        el('acct-notes').value.trim()        || null,
+  };
+
+  btn.disabled    = true;
+  btn.textContent = 'Saving…';
+
+  try {
+    if (editId) {
+      const res = await fetch(`${API}/accounts/${editId}`, {
+        method:  'PUT',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body:    JSON.stringify(data),
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    } else {
+      const res = await fetch(`${API}/accounts`, {
+        method:  'POST',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body:    JSON.stringify(data),
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    }
+    resetAccountForm();
+    await renderAccountsList();
+  } catch (err) {
+    errEl.textContent = `Failed to save: ${err.message}`;
+    errEl.classList.remove('hidden');
+    btn.disabled    = false;
+    btn.textContent = editId ? 'Save Changes' : 'Add Account';
+  }
+}
+
+async function confirmDeleteAccount(id, btn) {
+  if (!btn.dataset.confirming) {
+    btn.dataset.confirming = '1';
+    btn.textContent = 'Confirm?';
+    return;
+  }
+  btn.disabled    = true;
+  btn.textContent = 'Deleting…';
+  try {
+    const res = await fetch(`${API}/accounts/${id}`, {
+      method:  'DELETE',
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    await renderAccountsList();
+  } catch (err) {
+    btn.disabled    = false;
+    btn.textContent = 'Delete failed';
+  }
 }

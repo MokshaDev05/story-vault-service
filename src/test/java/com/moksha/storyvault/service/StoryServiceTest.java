@@ -5,10 +5,12 @@ import com.moksha.storyvault.dto.StoryResponse;
 import com.moksha.storyvault.dto.UpsertResult;
 import com.moksha.storyvault.model.Story;
 import com.moksha.storyvault.model.User;
+import com.moksha.storyvault.model.enums.KudosStatus;
 import com.moksha.storyvault.model.enums.Platform;
 import com.moksha.storyvault.model.enums.Rating;
 import com.moksha.storyvault.model.enums.ReadingStatus;
 import com.moksha.storyvault.model.enums.StoryStatus;
+import com.moksha.storyvault.repository.ConnectedAccountRepository;
 import com.moksha.storyvault.repository.ReadingHistoryRepository;
 import com.moksha.storyvault.repository.StoryRepository;
 import com.moksha.storyvault.repository.TagRepository;
@@ -36,6 +38,7 @@ class StoryServiceTest {
     @Mock StoryRepository storyRepository;
     @Mock TagRepository tagRepository;
     @Mock ReadingHistoryRepository readingHistoryRepository;
+    @Mock ConnectedAccountRepository connectedAccountRepository;
     @Mock SecurityUtils securityUtils;
 
     @InjectMocks StoryServiceImpl service;
@@ -138,6 +141,88 @@ class StoryServiceTest {
         assertThat(result.story().getCurrentChapter()).isEqualTo(20);
         assertThat(result.story().getCurrentChapterUrl())
                 .isEqualTo("https://archiveofourown.org/works/99999/chapters/final");
+    }
+
+    // ── Kudos status merge ────────────────────────────────────────────────────
+
+    @Test
+    void upsert_sets_kudosStatus_GIVEN_when_current_is_UNKNOWN() {
+        story.setKudosStatus(KudosStatus.UNKNOWN);
+
+        UpsertResult result = service.upsert(StoryRequest.builder()
+                .title("Test Story").author("Author").fandom("Fandom")
+                .platform(Platform.AO3).sourceWorkId("99999")
+                .kudosStatus(KudosStatus.GIVEN)
+                .build());
+
+        assertThat(result.story().getKudosStatus()).isEqualTo(KudosStatus.GIVEN);
+    }
+
+    @Test
+    void upsert_sets_kudosStatus_NOT_DETECTED_when_current_is_UNKNOWN() {
+        story.setKudosStatus(KudosStatus.UNKNOWN);
+
+        UpsertResult result = service.upsert(StoryRequest.builder()
+                .title("Test Story").author("Author").fandom("Fandom")
+                .platform(Platform.AO3).sourceWorkId("99999")
+                .kudosStatus(KudosStatus.NOT_DETECTED)
+                .build());
+
+        assertThat(result.story().getKudosStatus()).isEqualTo(KudosStatus.NOT_DETECTED);
+    }
+
+    @Test
+    void upsert_GIVEN_overwrites_NOT_DETECTED_because_GIVEN_always_wins() {
+        story.setKudosStatus(KudosStatus.NOT_DETECTED);
+
+        UpsertResult result = service.upsert(StoryRequest.builder()
+                .title("Test Story").author("Author").fandom("Fandom")
+                .platform(Platform.AO3).sourceWorkId("99999")
+                .kudosStatus(KudosStatus.GIVEN)
+                .build());
+
+        assertThat(result.story().getKudosStatus()).isEqualTo(KudosStatus.GIVEN);
+    }
+
+    @Test
+    void upsert_does_not_overwrite_NOT_DETECTED_with_NOT_DETECTED() {
+        story.setKudosStatus(KudosStatus.NOT_DETECTED);
+
+        UpsertResult result = service.upsert(StoryRequest.builder()
+                .title("Test Story").author("Author").fandom("Fandom")
+                .platform(Platform.AO3).sourceWorkId("99999")
+                .kudosStatus(KudosStatus.NOT_DETECTED)
+                .build());
+
+        // Status stays NOT_DETECTED; kudosDetectedAt should NOT be refreshed
+        assertThat(result.story().getKudosStatus()).isEqualTo(KudosStatus.NOT_DETECTED);
+    }
+
+    @Test
+    void upsert_ignores_incoming_UNKNOWN_kudosStatus() {
+        story.setKudosStatus(KudosStatus.NOT_DETECTED);
+
+        UpsertResult result = service.upsert(StoryRequest.builder()
+                .title("Test Story").author("Author").fandom("Fandom")
+                .platform(Platform.AO3).sourceWorkId("99999")
+                .kudosStatus(KudosStatus.UNKNOWN)
+                .build());
+
+        // Incoming UNKNOWN must never overwrite a real detected status
+        assertThat(result.story().getKudosStatus()).isEqualTo(KudosStatus.NOT_DETECTED);
+    }
+
+    @Test
+    void findById_includes_originalUrl_as_continue_reading_fallback() {
+        // When no currentChapterUrl is set, the frontend falls back to originalUrl.
+        // Both fields must be present in the response so the frontend can evaluate
+        // `currentChapterUrl || originalUrl` without a server round-trip.
+        story.setOriginalUrl("https://archiveofourown.org/works/99999");
+
+        StoryResponse resp = service.findById(10L);
+
+        assertThat(resp.getCurrentChapterUrl()).isNull();
+        assertThat(resp.getOriginalUrl()).isEqualTo("https://archiveofourown.org/works/99999");
     }
 
     @Test

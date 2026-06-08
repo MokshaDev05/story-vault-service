@@ -83,7 +83,7 @@
           <span class="wordmark">Story Vault</span>
           <div class="crest-rule">
             <span class="crest-line"></span>
-            <span class="crest-motif">◁ ◆ ▷</span>
+            <span class="crest-motif">◈ ◆ ◈</span>
             <span class="crest-line"></span>
           </div>
           <span class="wordmark-sub">Private Literary Archive</span>
@@ -101,13 +101,72 @@
           <button id="theme-btn" class="icon-btn" title="Toggle dark mode">◑</button>
           <button id="density-btn" class="text-btn" title="Toggle design density">◈ Maximal</button>
           <button id="scroll-to-controls" class="scroll-hint-btn">▾ Search</button>
-          <button id="logout-btn" class="text-btn">Sign out</button>
+          <button id="vault-toggle-btn" class="text-btn vault-close-btn" title="Close Vault">▲ Close Vault</button>
+          <button id="menu-btn" class="menu-btn" aria-label="Open menu" aria-expanded="false">
+            <span class="menu-mark" aria-hidden="true">
+              <span class="menu-mark-row"><span class="mm-line"></span><span class="mm-gem">◇</span><span class="mm-line"></span></span>
+              <span class="menu-mark-row"><span class="mm-line"></span><span class="mm-gem">◇</span><span class="mm-line"></span></span>
+            </span>
+          </button>
         </div>
 
       </div>
     </header>
 
-    <div class="vault-stage">
+    <!-- ── Nav Drawer ──────────────────────────────────────────────── -->
+    <div id="nav-overlay" class="nav-overlay" aria-hidden="true"></div>
+    <nav id="nav-drawer" class="nav-drawer" aria-label="Main navigation" aria-hidden="true">
+      <div class="nav-drawer-header">
+        <span class="nav-drawer-wordmark">Story Vault</span>
+        <button id="nav-close-btn" class="nav-close-btn" aria-label="Close menu">✕</button>
+      </div>
+      <div class="nav-drawer-rule" aria-hidden="true">
+        <span class="nav-rule-line"></span>
+        <span class="nav-rule-gem">◈ ◆ ◈</span>
+        <span class="nav-rule-line"></span>
+      </div>
+      <div class="nav-drawer-items" role="menu">
+        <button class="nav-item" data-view="library" role="menuitem"><span class="nav-item-gem">◆</span><span class="nav-item-label">Library</span></button>
+        <button class="nav-item" data-view="collections" role="menuitem"><span class="nav-item-gem">◇</span><span class="nav-item-label">Collections</span></button>
+        <button class="nav-item" data-view="downloads" role="menuitem"><span class="nav-item-gem">◇</span><span class="nav-item-label">Downloads</span></button>
+        <button class="nav-item" data-view="statistics" role="menuitem"><span class="nav-item-gem">◇</span><span class="nav-item-label">Statistics</span></button>
+        <button class="nav-item" data-view="accounts" role="menuitem"><span class="nav-item-gem">◇</span><span class="nav-item-label">Connected Accounts</span></button>
+        <button class="nav-item" data-view="settings" role="menuitem"><span class="nav-item-gem">◇</span><span class="nav-item-label">Settings</span></button>
+        <button class="nav-item" data-view="import" role="menuitem"><span class="nav-item-gem">◇</span><span class="nav-item-label">Import Center</span></button>
+      </div>
+      <div class="nav-drawer-rule nav-drawer-rule-sm" aria-hidden="true">
+        <span class="nav-rule-line"></span>
+        <span class="nav-rule-gem">◇</span>
+        <span class="nav-rule-line"></span>
+      </div>
+      <div class="nav-drawer-footer">
+        <button id="nav-privacy-btn" class="nav-item nav-footer-item"><span class="nav-item-gem">◉</span><span class="nav-item-label">Privacy Mode</span><span id="nav-privacy-status" class="nav-status-badge">Off</span></button>
+        <button id="nav-logout-btn" class="nav-item nav-footer-item nav-logout"><span class="nav-item-gem">◇</span><span class="nav-item-label">Sign Out</span></button>
+      </div>
+    </nav>
+
+    <div id="vault-closed-screen" class="vault-closed-screen hidden" aria-label="Vault is closed">
+      <div class="vault-closed-inner">
+        <div class="ornament-row">
+          <span class="ornament-line"></span>
+          <span class="ornament-gem">◆</span>
+          <span class="ornament-line"></span>
+        </div>
+        <h2 class="vault-closed-title">Story Vault</h2>
+        <p class="vault-closed-sub">Private Literary Archive</p>
+        <div class="ornament-row">
+          <span class="ornament-line"></span>
+          <span class="ornament-gem">◆</span>
+          <span class="ornament-line"></span>
+        </div>
+        <button id="open-vault-btn" class="btn btn-primary">▼ Open Vault</button>
+      </div>
+    </div>
+
+    <div id="vault-stage" class="vault-stage">
+
+      <!-- ── View: Library ───────────────────────────────────────────── -->
+      <div id="view-library" class="view">
 
       <div id="controls-bar" class="controls-bar">
         <div class="controls-inner">
@@ -126,6 +185,14 @@
               <option value="COMPLETE">Complete</option>
               <option value="HIATUS">Hiatus</option>
               <option value="ABANDONED">Abandoned</option>
+            </select>
+            <select id="filter-kudos" class="filter-select">
+              <option value="">All kudos</option>
+              <option value="GIVEN">Kudosed ♥</option>
+              <option value="NOT_GIVEN">Not kudosed</option>
+            </select>
+            <select id="filter-collection" class="filter-select">
+              <option value="">All collections</option>
             </select>
           </div>
           <div class="action-group">
@@ -321,7 +388,120 @@
         </div>
       </main>
 
-    </div>
+      </div><!-- /view-library -->
+
+      <!-- ── View: Collections ───────────────────────────────────────── -->
+      <div id="view-collections" class="view hidden">
+        <div class="page-head">
+          <div class="page-head-ornament" aria-hidden="true"><span class="page-rule-line"></span><span class="page-rule-gem">◈ ◆ ◈</span><span class="page-rule-line"></span></div>
+          <h2 class="page-title">Collections</h2>
+          <p class="page-sub">Your curated reading lists</p>
+        </div>
+        <div class="page-body">
+          <div class="page-actions-row">
+            <button id="page-manage-collections-btn" class="btn btn-primary">+ Manage Collections</button>
+          </div>
+          <div id="page-collections-grid" class="page-collections-grid">
+            <p class="page-empty-note">Load your library first to see collections.</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- ── View: Downloads ─────────────────────────────────────────── -->
+      <div id="view-downloads" class="view hidden">
+        <div class="page-head">
+          <div class="page-head-ornament" aria-hidden="true"><span class="page-rule-line"></span><span class="page-rule-gem">◈ ◆ ◈</span><span class="page-rule-line"></span></div>
+          <h2 class="page-title">Downloads</h2>
+          <p class="page-sub">Offline reading library</p>
+        </div>
+        <div class="placeholder-body">
+          <div class="placeholder-gem" aria-hidden="true">◇</div>
+          <p class="placeholder-note">Save works for offline reading — coming in a future release.</p>
+        </div>
+      </div>
+
+      <!-- ── View: Statistics ────────────────────────────────────────── -->
+      <div id="view-statistics" class="view hidden">
+        <div class="page-head">
+          <div class="page-head-ornament" aria-hidden="true"><span class="page-rule-line"></span><span class="page-rule-gem">◈ ◆ ◈</span><span class="page-rule-line"></span></div>
+          <h2 class="page-title">Statistics</h2>
+          <p class="page-sub">Reading analytics and vault insights</p>
+        </div>
+        <div class="placeholder-body">
+          <div class="placeholder-gem" aria-hidden="true">◇</div>
+          <p class="placeholder-note">Reading history charts and vault statistics — coming in a future release.</p>
+        </div>
+      </div>
+
+      <!-- ── View: Connected Accounts ───────────────────────────────── -->
+      <div id="view-accounts" class="view hidden">
+        <div class="page-head">
+          <div class="page-head-ornament" aria-hidden="true"><span class="page-rule-line"></span><span class="page-rule-gem">◈ ◆ ◈</span><span class="page-rule-line"></span></div>
+          <h2 class="page-title">Connected Accounts</h2>
+          <p class="page-sub">Reading platform accounts linked to your vault</p>
+        </div>
+        <div class="page-body">
+          <div class="page-actions-row">
+            <button id="page-add-account-btn" class="btn btn-primary">+ Add Account</button>
+          </div>
+          <div id="page-accounts-list" class="page-accounts-list"></div>
+        </div>
+      </div>
+
+      <!-- ── View: Settings ─────────────────────────────────────────── -->
+      <div id="view-settings" class="view hidden">
+        <div class="page-head">
+          <div class="page-head-ornament" aria-hidden="true"><span class="page-rule-line"></span><span class="page-rule-gem">◈ ◆ ◈</span><span class="page-rule-line"></span></div>
+          <h2 class="page-title">Settings</h2>
+          <p class="page-sub">Appearance and privacy preferences</p>
+        </div>
+        <div class="page-body settings-body">
+          <div class="settings-section">
+            <h3 class="settings-section-title">Appearance</h3>
+            <div class="setting-row">
+              <span class="setting-label">Accent Colour</span>
+              <div class="metal-toggle" role="group" aria-label="Accent metal">
+                <button class="metal-btn" data-metal="gold" title="Gold">◆</button>
+                <button class="metal-btn" data-metal="silver" title="Silver">◆</button>
+                <button class="metal-btn" data-metal="rose" title="Rose Gold">◆</button>
+              </div>
+            </div>
+            <div class="setting-row">
+              <span class="setting-label">Theme</span>
+              <button id="settings-theme-btn" class="btn btn-ghost btn-sm">Toggle Light / Dark</button>
+            </div>
+            <div class="setting-row">
+              <span class="setting-label">Design Density</span>
+              <button id="settings-density-btn" class="btn btn-ghost btn-sm">Toggle Density</button>
+            </div>
+          </div>
+          <div class="settings-section">
+            <h3 class="settings-section-title">Privacy</h3>
+            <div class="setting-row setting-row-info">
+              <div class="setting-info">
+                <span class="setting-label">Privacy Mode</span>
+                <span class="setting-hint">Vault always starts closed each session</span>
+              </div>
+              <button id="settings-privacy-btn" class="setting-toggle-btn"><span id="settings-privacy-status">Off</span></button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ── View: Import Center ─────────────────────────────────────── -->
+      <div id="view-import" class="view hidden">
+        <div class="page-head">
+          <div class="page-head-ornament" aria-hidden="true"><span class="page-rule-line"></span><span class="page-rule-gem">◈ ◆ ◈</span><span class="page-rule-line"></span></div>
+          <h2 class="page-title">Import Center</h2>
+          <p class="page-sub">Bulk import from AO3 and other platforms</p>
+        </div>
+        <div class="placeholder-body">
+          <div class="placeholder-gem" aria-hidden="true">◇</div>
+          <p class="placeholder-note">Import reading history, bookmarks, and subscriptions — coming in a future release.</p>
+        </div>
+      </div>
+
+    </div><!-- /vault-stage -->
 
   </div>
 
@@ -447,6 +627,83 @@
           <button type="submit" id="add-submit-btn" class="btn btn-primary">Add to Vault</button>
         </div>
 
+      </form>
+    </div>
+  </div>
+
+  <!-- ── Collections Modal ─────────────────────────────────────────── -->
+  <div id="collections-modal" class="modal-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="collections-modal-title">
+    <div class="modal">
+      <div class="modal-header">
+        <h2 id="collections-modal-title" class="modal-title">Collections</h2>
+        <button id="collections-modal-close" class="modal-close" aria-label="Close">✕</button>
+      </div>
+      <hr class="modal-rule" />
+      <div id="collections-list" class="accounts-list"></div>
+      <hr class="modal-rule" />
+      <form id="collection-form" class="add-form" novalidate>
+        <input type="hidden" id="collection-editing-id" value="" />
+        <h3 id="collection-form-title" class="accounts-form-heading">New Collection</h3>
+        <div class="form-field">
+          <label for="coll-name" class="form-label">Name <span class="req">*</span></label>
+          <input id="coll-name" type="text" class="form-input" placeholder="e.g. Favorites, Re-read Later…" />
+        </div>
+        <p id="collection-form-error" class="form-error hidden"></p>
+        <div class="form-actions">
+          <button type="button" id="collection-cancel-btn" class="btn btn-ghost">Cancel</button>
+          <button type="submit" id="collection-submit-btn" class="btn btn-primary">Create</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- ── Connected Accounts Modal ─────────────────────────────────── -->
+  <div id="accounts-modal" class="modal-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="accounts-modal-title">
+    <div class="modal">
+      <div class="modal-header">
+        <h2 id="accounts-modal-title" class="modal-title">Connected Accounts</h2>
+        <button id="accounts-modal-close" class="modal-close" aria-label="Close">✕</button>
+      </div>
+      <hr class="modal-rule" />
+      <div id="accounts-list" class="accounts-list"></div>
+      <hr class="modal-rule" />
+      <form id="account-form" class="add-form" novalidate>
+        <input type="hidden" id="account-editing-id" value="" />
+        <h3 id="account-form-title" class="accounts-form-heading">Add Account</h3>
+        <div class="form-row">
+          <div class="form-field">
+            <label for="acct-platform" class="form-label">Platform <span class="req">*</span></label>
+            <select id="acct-platform" class="form-input form-select">
+              <option value="AO3">AO3</option>
+              <option value="FFN">FFN</option>
+              <option value="WATTPAD">Wattpad</option>
+              <option value="OTHER">Other</option>
+            </select>
+          </div>
+          <div class="form-field">
+            <label for="acct-display-name" class="form-label">Username / Display Name <span class="req">*</span></label>
+            <input id="acct-display-name" type="text" class="form-input" placeholder="Your username on the site" />
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-field">
+            <label for="acct-profile-url" class="form-label">Profile URL</label>
+            <input id="acct-profile-url" type="url" class="form-input" placeholder="https://…" />
+          </div>
+          <div class="form-field">
+            <label for="acct-label" class="form-label">Label <span class="form-hint">(optional nickname)</span></label>
+            <input id="acct-label" type="text" class="form-input" placeholder="e.g. Main account" />
+          </div>
+        </div>
+        <div class="form-field">
+          <label for="acct-notes" class="form-label">Notes</label>
+          <textarea id="acct-notes" class="form-input form-textarea" rows="2"></textarea>
+        </div>
+        <p id="account-form-error" class="form-error hidden"></p>
+        <div class="form-actions">
+          <button type="button" id="account-cancel-btn" class="btn btn-ghost">Cancel</button>
+          <button type="submit" id="account-submit-btn" class="btn btn-primary">Add Account</button>
+        </div>
       </form>
     </div>
   </div>

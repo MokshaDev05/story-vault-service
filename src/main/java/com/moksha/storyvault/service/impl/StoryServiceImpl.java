@@ -8,13 +8,18 @@ import com.moksha.storyvault.dto.StorySearchRequest;
 import com.moksha.storyvault.dto.UpsertResult;
 import com.moksha.storyvault.exception.DuplicateStoryException;
 import com.moksha.storyvault.exception.StoryNotFoundException;
+import com.moksha.storyvault.dto.ShelfSummary;
+import com.moksha.storyvault.model.ConnectedAccount;
+import com.moksha.storyvault.model.Shelf;
 import com.moksha.storyvault.model.Story;
 import com.moksha.storyvault.model.Tag;
 import com.moksha.storyvault.model.User;
+import com.moksha.storyvault.model.enums.KudosStatus;
 import com.moksha.storyvault.model.enums.Platform;
 import com.moksha.storyvault.model.enums.Rating;
 import com.moksha.storyvault.model.enums.ReadingStatus;
 import com.moksha.storyvault.model.enums.StoryStatus;
+import com.moksha.storyvault.repository.ConnectedAccountRepository;
 import com.moksha.storyvault.repository.ReadingHistoryRepository;
 import com.moksha.storyvault.repository.StoryRepository;
 import com.moksha.storyvault.repository.TagRepository;
@@ -49,6 +54,7 @@ public class StoryServiceImpl implements StoryService {
     private final StoryRepository storyRepository;
     private final TagRepository tagRepository;
     private final ReadingHistoryRepository readingHistoryRepository;
+    private final ConnectedAccountRepository connectedAccountRepository;
     private final SecurityUtils securityUtils;
 
     // ── Create ────────────────────────────────────────────────────────────────
@@ -145,6 +151,15 @@ public class StoryServiceImpl implements StoryService {
         story.setReadingStatus(request.getReadingStatus() != null ? request.getReadingStatus() : story.getReadingStatus());
         story.setCurrentChapter(request.getCurrentChapter());
         story.setCurrentChapterUrl(request.getCurrentChapterUrl());
+        if (request.getKudosStatus() != null) {
+            story.setKudosStatus(request.getKudosStatus());
+            story.setKudosDetectedAt(LocalDateTime.now());
+        }
+        if (request.getSourceAccountId() != null) {
+            User user = securityUtils.currentUser();
+            connectedAccountRepository.findByIdAndUser(request.getSourceAccountId(), user)
+                    .ifPresent(story::setSourceAccount);
+        }
 
         story.getTags().clear();
         story.getTags().addAll(resolveTags(request.getTags()));
@@ -288,6 +303,13 @@ public class StoryServiceImpl implements StoryService {
                 var charJoin = root.join("characters", JoinType.LEFT);
                 predicates.add(cb.like(cb.lower(charJoin.as(String.class)),
                         "%" + req.getCharacterContains().toLowerCase() + "%"));
+            }
+
+            if (req.getCollectionId() != null) {
+                query.distinct(true);
+                var colJoin = root.join("collections", JoinType.INNER);
+                predicates.add(cb.equal(colJoin.get("id"), req.getCollectionId()));
+                predicates.add(cb.equal(colJoin.get("user"), user));
             }
 
             if (finalChapterFilter != null)
@@ -469,8 +491,24 @@ public class StoryServiceImpl implements StoryService {
         }
 
         advanceReadingProgress(story, request);
+        mergeKudosStatus(story, request);
         story.setLastAccessedAt(LocalDateTime.now());
         return toResponse(storyRepository.save(story));
+    }
+
+    /**
+     * Update kudos status on auto-upsert.
+     * GIVEN always wins (kudos cannot be revoked on AO3).
+     * Any status updates from UNKNOWN; NOT_DETECTED does not overwrite NOT_DETECTED.
+     * Incoming UNKNOWN is ignored (no detection signal).
+     */
+    private void mergeKudosStatus(Story story, StoryRequest request) {
+        if (request.getKudosStatus() == null || request.getKudosStatus() == KudosStatus.UNKNOWN) return;
+        KudosStatus current = story.getKudosStatus() != null ? story.getKudosStatus() : KudosStatus.UNKNOWN;
+        if (request.getKudosStatus() == KudosStatus.GIVEN || current == KudosStatus.UNKNOWN) {
+            story.setKudosStatus(request.getKudosStatus());
+            story.setKudosDetectedAt(LocalDateTime.now());
+        }
     }
 
     /** Auto-advance reading status and chapter; never goes backwards (except REREADING). */
@@ -515,6 +553,11 @@ public class StoryServiceImpl implements StoryService {
     }
 
     private Story buildFromRequest(StoryRequest request, User user, String normUrl) {
+        ConnectedAccount sourceAccount = null;
+        if (request.getSourceAccountId() != null) {
+            sourceAccount = connectedAccountRepository.findByIdAndUser(request.getSourceAccountId(), user).orElse(null);
+        }
+
         Story story = Story.builder()
                 .title(request.getTitle())
                 .author(request.getAuthor())
@@ -535,6 +578,8 @@ public class StoryServiceImpl implements StoryService {
                 .readingStatus(request.getReadingStatus())
                 .currentChapter(request.getCurrentChapter())
                 .currentChapterUrl(request.getCurrentChapterUrl())
+                .kudosStatus(request.getKudosStatus() != null ? request.getKudosStatus() : KudosStatus.UNKNOWN)
+                .sourceAccount(sourceAccount)
                 .user(user)
                 .build();
 
@@ -605,6 +650,13 @@ public class StoryServiceImpl implements StoryService {
                 .lastAccessedAt(story.getLastAccessedAt())
                 .firstAccessedAt(stats != null ? stats.getFirstAccessedAt() : null)
                 .accessCount(stats != null ? stats.getAccessCount() : null)
+                .kudosStatus(story.getKudosStatus())
+                .kudosDetectedAt(story.getKudosDetectedAt())
+                .sourceAccountId(story.getSourceAccount() != null ? story.getSourceAccount().getId() : null)
+                .collections(story.getCollections().stream()
+                        .map(c -> ShelfSummary.builder().id(c.getId()).name(c.getName()).build())
+                        .sorted(java.util.Comparator.comparing(ShelfSummary::getName))
+                        .collect(Collectors.toList()))
                 .build();
     }
 }

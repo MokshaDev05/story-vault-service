@@ -1,5 +1,6 @@
 package com.moksha.storyvault.dto;
 
+import com.moksha.storyvault.model.enums.KudosStatus;
 import com.moksha.storyvault.model.enums.Platform;
 import com.moksha.storyvault.model.enums.Rating;
 import com.moksha.storyvault.model.enums.ReadingStatus;
@@ -48,4 +49,8 @@ public class StoryResponse {
     private LocalDateTime lastAccessedAt;
     private LocalDateTime firstAccessedAt;
     private Long accessCount;
+    private KudosStatus kudosStatus;
+    private LocalDateTime kudosDetectedAt;
+    private Long sourceAccountId;
+    private List<ShelfSummary> collections;
 }
