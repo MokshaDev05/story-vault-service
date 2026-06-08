@@ -12,4 +12,6 @@ public interface ConnectedAccountRepository extends JpaRepository<ConnectedAccou
     List<ConnectedAccount> findAllByUserOrderByCreatedAtAsc(User user);
 
     Optional<ConnectedAccount> findByIdAndUser(Long id, User user);
+
+    long countByUser(User user);
 }

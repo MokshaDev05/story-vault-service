@@ -17,4 +17,6 @@ public interface ShelfRepository extends JpaRepository<Shelf, Long> {
     Optional<Shelf> findByIdAndUser(Long id, User user);
 
     Optional<Shelf> findByNameAndUser(String name, User user);
+
+    long countByUser(User user);
 }

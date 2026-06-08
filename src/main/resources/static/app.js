@@ -1485,6 +1485,7 @@ function navigateTo(view) {
   });
   if (view === 'collections') renderCollectionsPage();
   if (view === 'downloads')   renderDownloadsPage();
+  if (view === 'statistics')  renderStatisticsPage();
   if (view === 'accounts')    renderAccountsPage();
   if (view === 'settings')    updateSettingsPage();
 }
@@ -1512,6 +1513,119 @@ function renderCollectionsPage() {
       if (sel) { sel.value = btn.dataset.id; applyFilters(); }
     });
   });
+}
+
+async function renderStatisticsPage() {
+  const container = el('stats-page-body');
+  if (!container) return;
+  container.innerHTML = '<p class="loading-state" style="padding:12px 0;">Loading…</p>';
+  try {
+    const res = await fetch(`${API}/stats`, { headers: { Authorization: `Bearer ${token}` } });
+    if (res.status === 401) { handleUnauthorized(); return; }
+    const body = await res.json();
+    const d = body.data;
+
+    const fmt = n => (n ?? 0).toLocaleString();
+    const pct = (n, total) => total > 0 ? Math.round((n / total) * 100) : 0;
+
+    const statusBar = (map, total) => {
+      if (!map || Object.keys(map).length === 0) return '<p class="stat-empty">No data</p>';
+      return Object.entries(map).sort((a, b) => b[1] - a[1]).map(([k, v]) =>
+        `<div class="stat-bar-row">
+           <span class="stat-bar-label">${esc(k.replace(/_/g, ' '))}</span>
+           <div class="stat-bar-track"><div class="stat-bar-fill" style="width:${pct(v, total)}%"></div></div>
+           <span class="stat-bar-count">${fmt(v)}</span>
+         </div>`).join('');
+    };
+
+    const topList = (items, emptyMsg) => {
+      if (!items || items.length === 0) return `<p class="stat-empty">${emptyMsg}</p>`;
+      const max = items[0].count;
+      return items.map(item =>
+        `<div class="stat-bar-row">
+           <span class="stat-bar-label" title="${escA(item.label)}">${esc(item.label)}</span>
+           <div class="stat-bar-track"><div class="stat-bar-fill" style="width:${pct(item.count, max)}%"></div></div>
+           <span class="stat-bar-count">${fmt(item.count)}</span>
+         </div>`).join('');
+    };
+
+    const accessList = (items, showCount) => {
+      if (!items || items.length === 0) return '<p class="stat-empty">No reading history</p>';
+      return `<ol class="stat-story-list">${items.map(s =>
+        `<li class="stat-story-item">
+           <span class="stat-story-title">${esc(s.storyTitle || 'Untitled')}</span>
+           <span class="stat-story-meta">${showCount
+             ? fmt(s.accessCount) + ' access' + (s.accessCount === 1 ? '' : 'es')
+             : (s.lastAccessedAt ? s.lastAccessedAt.slice(0, 10) : '')
+           }</span>
+         </li>`).join('')}</ol>`;
+    };
+
+    const totalStories = d.totalStories ?? 0;
+
+    container.innerHTML = `
+      <div class="stats-grid">
+
+        <div class="stat-card stat-card-accent">
+          <p class="stat-card-label">Stories saved</p>
+          <p class="stat-card-value">${fmt(d.totalStories)}</p>
+        </div>
+        <div class="stat-card stat-card-accent">
+          <p class="stat-card-label">Words archived</p>
+          <p class="stat-card-value">${fmt(d.totalWordsArchived)}</p>
+        </div>
+        <div class="stat-card">
+          <p class="stat-card-label">Kudosed</p>
+          <p class="stat-card-value">${fmt(d.kudosedCount)}</p>
+        </div>
+        <div class="stat-card">
+          <p class="stat-card-label">Collections</p>
+          <p class="stat-card-value">${fmt(d.collectionsCount)}</p>
+        </div>
+        <div class="stat-card">
+          <p class="stat-card-label">Connected accounts</p>
+          <p class="stat-card-value">${fmt(d.connectedAccountsCount)}</p>
+        </div>
+
+        <div class="stat-panel stat-panel-half">
+          <h3 class="stat-panel-title">Works by official status</h3>
+          ${statusBar(d.byStoryStatus, totalStories)}
+        </div>
+        <div class="stat-panel stat-panel-half">
+          <h3 class="stat-panel-title">Works by reading status</h3>
+          ${statusBar(d.byReadingStatus, totalStories)}
+        </div>
+
+        <div class="stat-panel">
+          <h3 class="stat-panel-title">Top fandoms</h3>
+          ${topList(d.topFandoms, 'No stories saved yet')}
+        </div>
+        <div class="stat-panel">
+          <h3 class="stat-panel-title">Top authors</h3>
+          ${topList(d.topAuthors, 'No stories saved yet')}
+        </div>
+        <div class="stat-panel">
+          <h3 class="stat-panel-title">Top ships &amp; relationships</h3>
+          ${topList(d.topRelationships, 'No relationship tags found')}
+        </div>
+        <div class="stat-panel">
+          <h3 class="stat-panel-title">Top freeform tags</h3>
+          ${topList(d.topTags, 'No tags found')}
+        </div>
+
+        <div class="stat-panel stat-panel-half">
+          <h3 class="stat-panel-title">Most accessed</h3>
+          ${accessList(d.mostAccessedStories, true)}
+        </div>
+        <div class="stat-panel stat-panel-half">
+          <h3 class="stat-panel-title">Recently accessed</h3>
+          ${accessList(d.recentlyAccessedStories, false)}
+        </div>
+
+      </div>`;
+  } catch {
+    container.innerHTML = '<p class="page-empty-note">Could not load statistics.</p>';
+  }
 }
 
 async function renderDownloadsPage() {

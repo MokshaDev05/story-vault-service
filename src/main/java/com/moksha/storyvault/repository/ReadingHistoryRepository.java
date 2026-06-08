@@ -4,6 +4,7 @@ import com.moksha.storyvault.dto.ReadingHistoryStats;
 import com.moksha.storyvault.model.ReadingHistory;
 import com.moksha.storyvault.model.Story;
 import com.moksha.storyvault.model.User;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
@@ -36,4 +37,13 @@ public interface ReadingHistoryRepository extends JpaRepository<ReadingHistory, 
     """)
     List<Long> findStoryIdsWithChapterAccessed(@Param("user") User user,
                                                @Param("chapterNumber") Integer chapterNumber);
+
+    @Query("""
+        SELECT h.story.id, h.story.title, COUNT(h)
+        FROM ReadingHistory h
+        WHERE h.story.user = :user
+        GROUP BY h.story.id, h.story.title
+        ORDER BY COUNT(h) DESC
+    """)
+    List<Object[]> mostAccessedStoriesByUser(@Param("user") User user, Pageable pageable);
 }
