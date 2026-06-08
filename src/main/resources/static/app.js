@@ -1486,6 +1486,7 @@ function navigateTo(view) {
   if (view === 'collections') renderCollectionsPage();
   if (view === 'downloads')   renderDownloadsPage();
   if (view === 'statistics')  renderStatisticsPage();
+  if (view === 'import')      renderImportPage();
   if (view === 'accounts')    renderAccountsPage();
   if (view === 'settings')    updateSettingsPage();
 }
@@ -1513,6 +1514,73 @@ function renderCollectionsPage() {
       if (sel) { sel.value = btn.dataset.id; applyFilters(); }
     });
   });
+}
+
+const IMPORT_TYPES = [
+  { platform: 'AO3',      importType: 'HISTORY',       label: 'AO3 History',
+    desc: 'Import your complete AO3 reading history.' },
+  { platform: 'AO3',      importType: 'BOOKMARKS',     label: 'AO3 Bookmarks',
+    desc: 'Import all bookmarked works from your AO3 account.' },
+  { platform: 'AO3',      importType: 'SUBSCRIPTIONS', label: 'AO3 Subscriptions',
+    desc: 'Import works and series you subscribe to on AO3.' },
+  { platform: 'WATTPAD',  importType: 'LIBRARY',       label: 'Wattpad Library',
+    desc: 'Import your Wattpad reading library and following list.' },
+  { platform: 'FFN',      importType: 'FAVORITES',     label: 'FFN Favorites',
+    desc: 'Import favorites and followed stories from FanFiction.net.' },
+];
+
+async function renderImportPage() {
+  const container = el('import-page-body');
+  if (!container) return;
+
+  const statusMap = { PENDING: 'Queued', RUNNING: 'Running', COMPLETED: 'Done',
+                      FAILED: 'Failed', CANCELLED: 'Cancelled' };
+
+  let jobsHtml = '';
+  try {
+    const res = await fetch(`${API}/imports`, { headers: { Authorization: `Bearer ${token}` } });
+    if (res.status === 401) { handleUnauthorized(); return; }
+    const body = await res.json();
+    const jobs = body.data || [];
+    if (jobs.length === 0) {
+      jobsHtml = '<p class="stat-empty">No imports have been run yet.</p>';
+    } else {
+      jobsHtml = `<ul class="import-job-list">${jobs.map(j => `
+        <li class="import-job-row">
+          <span class="import-job-label">${esc(j.platform)} — ${esc(j.importType.replace(/_/g,' '))}</span>
+          <span class="import-job-status import-job-status-${j.status.toLowerCase()}">${statusMap[j.status] || j.status}</span>
+          <span class="import-job-count">${j.itemsProcessed > 0 ? j.itemsProcessed + ' items' : ''}</span>
+          <span class="import-job-date">${j.createdAt ? j.createdAt.slice(0,10) : ''}</span>
+        </li>`).join('')}</ul>`;
+    }
+  } catch {
+    jobsHtml = '<p class="stat-empty">Could not load import history.</p>';
+  }
+
+  container.innerHTML = `
+    <p class="import-intro">Imports use connected accounts or extension-assisted syncing when available. Select an import type below to queue a job when support is ready.</p>
+
+    <div class="import-cards">
+      ${IMPORT_TYPES.map(t => `
+        <div class="import-card">
+          <div class="import-card-body">
+            <p class="import-card-title">${esc(t.label)}</p>
+            <p class="import-card-desc">${esc(t.desc)}</p>
+          </div>
+          <div class="import-card-foot">
+            <span class="import-coming-badge">Coming soon</span>
+            <button class="btn btn-sm import-trigger-btn" disabled
+              data-platform="${escA(t.platform)}" data-type="${escA(t.importType)}">
+              Import ${esc(t.label)}
+            </button>
+          </div>
+        </div>`).join('')}
+    </div>
+
+    <div class="import-history-section">
+      <h3 class="stat-panel-title">Import history</h3>
+      ${jobsHtml}
+    </div>`;
 }
 
 async function renderStatisticsPage() {
