@@ -12,13 +12,17 @@ import org.springframework.web.bind.annotation.*;
 import java.util.List;
 
 @RestController
-@RequestMapping("/api/v1/stories/{storyId}/downloads")
 @RequiredArgsConstructor
 public class DownloadController {
 
     private final DownloadService downloadService;
 
-    @PostMapping
+    @GetMapping("/api/v1/downloads")
+    public ResponseEntity<ApiResponse<List<DownloadRecordResponse>>> getAllDownloads() {
+        return ResponseEntity.ok(ApiResponse.success("Downloads retrieved", downloadService.getAllDownloads()));
+    }
+
+    @PostMapping("/api/v1/stories/{storyId}/downloads")
     public ResponseEntity<ApiResponse<DownloadRecordResponse>> addDownload(
             @PathVariable Long storyId,
             @RequestBody DownloadRecordRequest request) {
@@ -26,9 +30,18 @@ public class DownloadController {
                 .body(ApiResponse.success("Download recorded", downloadService.addDownload(storyId, request)));
     }
 
-    @GetMapping
-    public ResponseEntity<ApiResponse<List<DownloadRecordResponse>>> getDownloads(@PathVariable Long storyId) {
-        return ResponseEntity.ok(ApiResponse.success("Download history retrieved",
-                downloadService.getDownloads(storyId)));
+    @GetMapping("/api/v1/stories/{storyId}/downloads")
+    public ResponseEntity<ApiResponse<List<DownloadRecordResponse>>> getDownloadsForStory(
+            @PathVariable Long storyId) {
+        return ResponseEntity.ok(ApiResponse.success("Downloads retrieved",
+                downloadService.getDownloadsForStory(storyId)));
+    }
+
+    @DeleteMapping("/api/v1/stories/{storyId}/downloads/{id}")
+    public ResponseEntity<Void> deleteDownload(
+            @PathVariable Long storyId,
+            @PathVariable Long id) {
+        downloadService.deleteDownload(storyId, id);
+        return ResponseEntity.noContent().build();
     }
 }

@@ -2,6 +2,7 @@ package com.moksha.storyvault.service.impl;
 
 import com.moksha.storyvault.dto.DownloadRecordRequest;
 import com.moksha.storyvault.dto.DownloadRecordResponse;
+import com.moksha.storyvault.exception.DownloadRecordNotFoundException;
 import com.moksha.storyvault.exception.StoryNotFoundException;
 import com.moksha.storyvault.model.DownloadRecord;
 import com.moksha.storyvault.repository.DownloadRecordRepository;
@@ -29,13 +30,17 @@ public class DownloadServiceImpl implements DownloadService {
     @Override
     @Transactional
     public DownloadRecordResponse addDownload(Long storyId, DownloadRecordRequest request) {
-        var user = securityUtils.currentUser();
+        var user  = securityUtils.currentUser();
         var story = storyRepository.findByIdAndUser(storyId, user)
                 .orElseThrow(() -> new StoryNotFoundException(storyId));
 
-        DownloadRecord record = DownloadRecord.builder()
+        var record = DownloadRecord.builder()
                 .story(story)
-                .source(request.getSource())
+                .platform(request.getPlatform())
+                .fileType(request.getFileType())
+                .fileName(request.getFileName())
+                .storageKey(request.getStorageKey())
+                .sourceUrl(request.getSourceUrl())
                 .notes(request.getNotes())
                 .build();
 
@@ -43,22 +48,46 @@ public class DownloadServiceImpl implements DownloadService {
     }
 
     @Override
-    public List<DownloadRecordResponse> getDownloads(Long storyId) {
+    public List<DownloadRecordResponse> getDownloadsForStory(Long storyId) {
         var user = securityUtils.currentUser();
-        if (storyRepository.findByIdAndUser(storyId, user).isEmpty()) {
-            throw new StoryNotFoundException(storyId);
-        }
+        storyRepository.findByIdAndUser(storyId, user)
+                .orElseThrow(() -> new StoryNotFoundException(storyId));
         return downloadRecordRepository.findByStoryIdOrderByDownloadedAtDesc(storyId).stream()
                 .map(this::toResponse)
                 .collect(Collectors.toList());
     }
 
-    private DownloadRecordResponse toResponse(DownloadRecord record) {
+    @Override
+    public List<DownloadRecordResponse> getAllDownloads() {
+        var user = securityUtils.currentUser();
+        return downloadRecordRepository.findAllByUserOrderByDownloadedAtDesc(user).stream()
+                .map(this::toResponse)
+                .collect(Collectors.toList());
+    }
+
+    @Override
+    @Transactional
+    public void deleteDownload(Long storyId, Long id) {
+        var user = securityUtils.currentUser();
+        storyRepository.findByIdAndUser(storyId, user)
+                .orElseThrow(() -> new StoryNotFoundException(storyId));
+        var record = downloadRecordRepository.findByIdAndStoryId(id, storyId)
+                .orElseThrow(() -> new DownloadRecordNotFoundException(id));
+        downloadRecordRepository.delete(record);
+    }
+
+    private DownloadRecordResponse toResponse(DownloadRecord dr) {
         return DownloadRecordResponse.builder()
-                .id(record.getId())
-                .source(record.getSource())
-                .notes(record.getNotes())
-                .downloadedAt(record.getDownloadedAt())
+                .id(dr.getId())
+                .storyId(dr.getStory().getId())
+                .storyTitle(dr.getStory().getTitle())
+                .platform(dr.getPlatform())
+                .fileType(dr.getFileType())
+                .fileName(dr.getFileName())
+                .storageKey(dr.getStorageKey())
+                .sourceUrl(dr.getSourceUrl())
+                .notes(dr.getNotes())
+                .downloadedAt(dr.getDownloadedAt())
                 .build();
     }
 }

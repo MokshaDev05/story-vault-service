@@ -9,5 +9,9 @@ public interface DownloadService {
 
     DownloadRecordResponse addDownload(Long storyId, DownloadRecordRequest request);
 
-    List<DownloadRecordResponse> getDownloads(Long storyId);
+    List<DownloadRecordResponse> getDownloadsForStory(Long storyId);
+
+    List<DownloadRecordResponse> getAllDownloads();
+
+    void deleteDownload(Long storyId, Long id);
 }

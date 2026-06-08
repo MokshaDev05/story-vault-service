@@ -52,6 +52,13 @@ public class GlobalExceptionHandler {
                 .body(ApiResponse.error(ex.getMessage()));
     }
 
+    @ExceptionHandler(DownloadRecordNotFoundException.class)
+    public ResponseEntity<ApiResponse<Void>> handleDownloadNotFound(DownloadRecordNotFoundException ex) {
+        log.warn("Download record not found: {}", ex.getMessage());
+        return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                .body(ApiResponse.error(ex.getMessage()));
+    }
+
     @ExceptionHandler(ShelfNotFoundException.class)
     public ResponseEntity<ApiResponse<Void>> handleShelfNotFound(ShelfNotFoundException ex) {
         log.warn("Collection not found: {}", ex.getMessage());

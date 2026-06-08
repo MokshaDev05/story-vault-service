@@ -1484,6 +1484,7 @@ function navigateTo(view) {
     btn.classList.toggle('nav-active', btn.dataset.view === view);
   });
   if (view === 'collections') renderCollectionsPage();
+  if (view === 'downloads')   renderDownloadsPage();
   if (view === 'accounts')    renderAccountsPage();
   if (view === 'settings')    updateSettingsPage();
 }
@@ -1511,6 +1512,40 @@ function renderCollectionsPage() {
       if (sel) { sel.value = btn.dataset.id; applyFilters(); }
     });
   });
+}
+
+async function renderDownloadsPage() {
+  const container = el('downloads-page-body');
+  if (!container) return;
+  container.innerHTML = '<p class="loading-state" style="padding:12px 0;">Loading…</p>';
+  try {
+    const res = await fetch(`${API}/downloads`, { headers: { Authorization: `Bearer ${token}` } });
+    if (res.status === 401) { handleUnauthorized(); return; }
+    const body = await res.json();
+    const records = body.data || [];
+    if (records.length === 0) {
+      container.innerHTML = `
+        <div class="placeholder-body">
+          <div class="placeholder-gem" aria-hidden="true">◇</div>
+          <p class="placeholder-note">No downloads saved yet.</p>
+          <p class="placeholder-note" style="margin-top:4px;opacity:.6;">Future downloads will appear here.</p>
+        </div>`;
+      return;
+    }
+    container.innerHTML = records.map(r => `
+      <div class="download-record-row">
+        <div class="dl-meta">
+          <span class="dl-title">${esc(r.storyTitle || 'Untitled')}</span>
+          <span class="dl-chips">
+            <span class="dl-chip">${esc(r.fileType || '')}</span>
+            <span class="dl-chip dl-chip-platform">${esc(r.platform || '')}</span>
+          </span>
+        </div>
+        <span class="dl-date">${r.downloadedAt ? r.downloadedAt.slice(0, 10) : ''}</span>
+      </div>`).join('');
+  } catch {
+    container.innerHTML = '<p class="page-empty-note">Could not load downloads.</p>';
+  }
 }
 
 async function renderAccountsPage() {
