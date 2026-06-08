@@ -13,6 +13,11 @@ let vaultOpen = false;
 let privacyMode = false;
 let dataLoaded = false;
 let currentView = 'library';
+let rememberVault = true;
+let autoLog       = true;
+let showToast     = true;
+let showKudos     = true;
+let showChips     = true;
 
 // ─── Init ─────────────────────────────────────────────────────────────────────
 
@@ -20,6 +25,7 @@ document.addEventListener('DOMContentLoaded', () => {
   loadTheme();
   loadMetal();
   loadDensity();
+  loadDisplayPrefs();
   bindEvents();
   token ? boot() : showLogin();
 });
@@ -46,6 +52,7 @@ function toggleTheme() {
   const next = document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark';
   document.documentElement.dataset.theme = next;
   localStorage.setItem('sv_theme', next);
+  updateSettingsPage();
 }
 
 // ─── Metal ────────────────────────────────────────────────────────────────────
@@ -73,11 +80,52 @@ function setDensity(density, save = true) {
   if (save) localStorage.setItem('sv_density', density);
   const btn = el('density-btn');
   if (btn) btn.textContent = density === 'maximal' ? '◈ Minimal' : '◈ Maximal';
+  updateSettingsPage();
 }
 
 function toggleDensity() {
   const next = document.documentElement.dataset.density === 'maximal' ? 'minimal' : 'maximal';
   setDensity(next);
+}
+
+function loadDisplayPrefs() {
+  rememberVault = localStorage.getItem('sv_remember_vault') !== '0';
+  autoLog       = localStorage.getItem('sv_auto_log')       !== '0';
+  showToast     = localStorage.getItem('sv_show_toast')     !== '0';
+  showKudos     = localStorage.getItem('sv_show_kudos')     !== '0';
+  showChips     = localStorage.getItem('sv_show_chips')     !== '0';
+}
+
+function toggleRememberVault() {
+  rememberVault = !rememberVault;
+  localStorage.setItem('sv_remember_vault', rememberVault ? '1' : '0');
+  updateSettingsPage();
+}
+
+function toggleAutoLog() {
+  autoLog = !autoLog;
+  localStorage.setItem('sv_auto_log', autoLog ? '1' : '0');
+  updateSettingsPage();
+}
+
+function toggleShowToast() {
+  showToast = !showToast;
+  localStorage.setItem('sv_show_toast', showToast ? '1' : '0');
+  updateSettingsPage();
+}
+
+function toggleShowKudos() {
+  showKudos = !showKudos;
+  localStorage.setItem('sv_show_kudos', showKudos ? '1' : '0');
+  updateSettingsPage();
+  if (currentView === 'library') applyFilters();
+}
+
+function toggleShowChips() {
+  showChips = !showChips;
+  localStorage.setItem('sv_show_chips', showChips ? '1' : '0');
+  updateSettingsPage();
+  if (currentView === 'library') applyFilters();
 }
 
 // ─── Header behaviour ─────────────────────────────────────────────────────────
@@ -825,9 +873,9 @@ function cardHTML(s) {
     ? `<a href="${escA(continueCardUrl)}" target="_blank" rel="noopener noreferrer" class="card-url-link" title="${s.currentChapterUrl ? 'Continue Reading' : 'Open original'}" onclick="event.stopPropagation()">↗</a>`
     : '';
   const fileIcon  = s.hasFile ? `<span class="card-file-icon" title="File attached">◎</span>` : '';
-  const kudosIcon = s.kudosStatus === 'GIVEN' ? `<span class="card-kudos-icon" title="Kudosed">♥</span>` : '';
-  const collChips = (s.collections || []).slice(0, 3).map(c =>
-    `<span class="collection-chip collection-chip-card">${esc(c.name)}</span>`).join('');
+  const kudosIcon = showKudos && s.kudosStatus === 'GIVEN' ? `<span class="card-kudos-icon" title="Kudosed">♥</span>` : '';
+  const collChips = showChips ? (s.collections || []).slice(0, 3).map(c =>
+    `<span class="collection-chip collection-chip-card">${esc(c.name)}</span>`).join('') : '';
   const collRow = collChips ? `<div class="card-collections">${collChips}</div>` : '';
 
   return `
@@ -1271,6 +1319,11 @@ function bindEvents() {
   el('settings-theme-btn').addEventListener('click', toggleTheme);
   el('settings-density-btn').addEventListener('click', toggleDensity);
   el('settings-privacy-btn').addEventListener('click', togglePrivacyMode);
+  el('settings-remember-vault-btn').addEventListener('click', toggleRememberVault);
+  el('settings-auto-log-btn').addEventListener('click', toggleAutoLog);
+  el('settings-show-toast-btn').addEventListener('click', toggleShowToast);
+  el('settings-show-kudos-btn').addEventListener('click', toggleShowKudos);
+  el('settings-show-chips-btn').addEventListener('click', toggleShowChips);
   document.querySelectorAll('.nav-item[data-view]').forEach(btn => {
     btn.addEventListener('click', () => navigateTo(btn.dataset.view));
   });
@@ -1394,7 +1447,7 @@ function fmtDate(iso) {
 function loadVaultState() {
   privacyMode = localStorage.getItem('sv_privacy_mode') === '1';
   updatePrivacyModeBtn();
-  vaultOpen = !privacyMode && localStorage.getItem('sv_vault_open') === '1';
+  vaultOpen = !privacyMode && rememberVault && localStorage.getItem('sv_vault_open') === '1';
   applyVaultState(false);
 }
 
@@ -1426,7 +1479,7 @@ function applyVaultState(animate) {
 
 function openVault() {
   vaultOpen = true;
-  if (!privacyMode) localStorage.setItem('sv_vault_open', '1');
+  if (!privacyMode && rememberVault) localStorage.setItem('sv_vault_open', '1');
   applyVaultState(true);
   if (!dataLoaded) {
     dataLoaded = true;
@@ -1760,13 +1813,23 @@ async function renderAccountsPage() {
   }
 }
 
+function syncToggle(btnId, statusId, isOn, label) {
+  const btn = el(btnId), sts = el(statusId);
+  if (btn) btn.classList.toggle('is-on', isOn);
+  if (sts) sts.textContent = label;
+}
+
 function updateSettingsPage() {
-  const pBtn = el('settings-privacy-btn');
-  const pSts = el('settings-privacy-status');
-  if (pBtn && pSts) {
-    pBtn.classList.toggle('is-on', privacyMode);
-    pSts.textContent = privacyMode ? 'On' : 'Off';
-  }
+  const theme   = document.documentElement.dataset.theme   || 'light';
+  const density = document.documentElement.dataset.density || 'minimal';
+  syncToggle('settings-theme-btn',          'settings-theme-status',          theme === 'dark',      theme === 'dark' ? 'Dark' : 'Light');
+  syncToggle('settings-density-btn',        'settings-density-status',        density === 'maximal', density === 'maximal' ? 'Compact' : 'Comfortable');
+  syncToggle('settings-privacy-btn',        'settings-privacy-status',        privacyMode,   privacyMode   ? 'On' : 'Off');
+  syncToggle('settings-remember-vault-btn', 'settings-remember-vault-status', rememberVault, rememberVault ? 'On' : 'Off');
+  syncToggle('settings-auto-log-btn',       'settings-auto-log-status',       autoLog,       autoLog       ? 'On' : 'Off');
+  syncToggle('settings-show-toast-btn',     'settings-show-toast-status',     showToast,     showToast     ? 'On' : 'Off');
+  syncToggle('settings-show-kudos-btn',     'settings-show-kudos-status',     showKudos,     showKudos     ? 'On' : 'Off');
+  syncToggle('settings-show-chips-btn',     'settings-show-chips-status',     showChips,     showChips     ? 'On' : 'Off');
 }
 
 // ─── Connected Accounts ───────────────────────────────────────────────────────

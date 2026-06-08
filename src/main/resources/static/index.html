@@ -450,35 +450,86 @@
           <p class="page-sub">Appearance and privacy preferences</p>
         </div>
         <div class="page-body settings-body">
+
           <div class="settings-section">
-            <h3 class="settings-section-title">Appearance</h3>
+            <h3 class="settings-section-title">Theme</h3>
+            <div class="setting-row setting-row-info">
+              <div class="setting-info">
+                <span class="setting-label">Light / Dark</span>
+              </div>
+              <button id="settings-theme-btn" class="setting-toggle-btn"><span id="settings-theme-status">Light</span></button>
+            </div>
             <div class="setting-row">
-              <span class="setting-label">Accent Colour</span>
+              <span class="setting-label">Accent colour</span>
               <div class="metal-toggle" role="group" aria-label="Accent metal">
-                <button class="metal-btn" data-metal="gold" title="Gold">◆</button>
-                <button class="metal-btn" data-metal="silver" title="Silver">◆</button>
-                <button class="metal-btn" data-metal="rose" title="Rose Gold">◆</button>
+                <button class="metal-btn" data-metal="gold" title="Gold">Gold</button>
+                <button class="metal-btn" data-metal="silver" title="Silver">Silver</button>
+                <button class="metal-btn" data-metal="rose" title="Rose Gold">Rose</button>
               </div>
             </div>
-            <div class="setting-row">
-              <span class="setting-label">Theme</span>
-              <button id="settings-theme-btn" class="btn btn-ghost btn-sm">Toggle Light / Dark</button>
-            </div>
-            <div class="setting-row">
-              <span class="setting-label">Design Density</span>
-              <button id="settings-density-btn" class="btn btn-ghost btn-sm">Toggle Density</button>
+            <div class="setting-row setting-row-info">
+              <div class="setting-info">
+                <span class="setting-label">Card density</span>
+                <span class="setting-hint">Comfortable shows more detail per card; Compact shows more cards</span>
+              </div>
+              <button id="settings-density-btn" class="setting-toggle-btn"><span id="settings-density-status">Comfortable</span></button>
             </div>
           </div>
+
           <div class="settings-section">
             <h3 class="settings-section-title">Privacy</h3>
             <div class="setting-row setting-row-info">
               <div class="setting-info">
                 <span class="setting-label">Privacy Mode</span>
-                <span class="setting-hint">Vault always starts closed each session</span>
+                <span class="setting-hint">Vault always starts closed each session, regardless of last state</span>
               </div>
               <button id="settings-privacy-btn" class="setting-toggle-btn"><span id="settings-privacy-status">Off</span></button>
             </div>
+            <div class="setting-row setting-row-info">
+              <div class="setting-info">
+                <span class="setting-label">Remember vault state</span>
+                <span class="setting-hint">Restore open / closed state between sessions when Privacy Mode is off</span>
+              </div>
+              <button id="settings-remember-vault-btn" class="setting-toggle-btn"><span id="settings-remember-vault-status">On</span></button>
+            </div>
           </div>
+
+          <div class="settings-section">
+            <h3 class="settings-section-title">Extension</h3>
+            <div class="setting-row setting-row-info">
+              <div class="setting-info">
+                <span class="setting-label">Auto-log AO3 pages</span>
+                <span class="setting-hint">Automatically record reading history when you visit AO3</span>
+              </div>
+              <button id="settings-auto-log-btn" class="setting-toggle-btn"><span id="settings-auto-log-status">On</span></button>
+            </div>
+            <div class="setting-row setting-row-info">
+              <div class="setting-info">
+                <span class="setting-label">Show extension status</span>
+                <span class="setting-hint">Display toast notifications when the extension logs a page</span>
+              </div>
+              <button id="settings-show-toast-btn" class="setting-toggle-btn"><span id="settings-show-toast-status">On</span></button>
+            </div>
+          </div>
+
+          <div class="settings-section">
+            <h3 class="settings-section-title">Display</h3>
+            <div class="setting-row setting-row-info">
+              <div class="setting-info">
+                <span class="setting-label">Show kudos icon</span>
+                <span class="setting-hint">Show a heart icon on story cards where kudos was given</span>
+              </div>
+              <button id="settings-show-kudos-btn" class="setting-toggle-btn"><span id="settings-show-kudos-status">On</span></button>
+            </div>
+            <div class="setting-row setting-row-info">
+              <div class="setting-info">
+                <span class="setting-label">Show collection chips</span>
+                <span class="setting-hint">Show collection badges on story cards</span>
+              </div>
+              <button id="settings-show-chips-btn" class="setting-toggle-btn"><span id="settings-show-chips-status">On</span></button>
+            </div>
+          </div>
+
         </div>
       </div>
 
