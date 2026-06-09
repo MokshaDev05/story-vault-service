@@ -18,6 +18,11 @@ public class ImportJobResponse {
     private LocalDateTime startedAt;
     private LocalDateTime completedAt;
     private int itemsProcessed;
+    private int currentPage;
+    private Integer totalPages;
+    private int errorCount;
     private String errorMessage;
+    private String lastError;
     private LocalDateTime createdAt;
+    private LocalDateTime updatedAt;
 }

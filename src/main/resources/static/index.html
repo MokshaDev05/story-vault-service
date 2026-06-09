@@ -4,6 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Story Vault</title>
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,500;0,600;0,700;1,400;1,600&family=EB+Garamond:ital,wght@0,400;0,500;0,600;1,400;1,500&family=Playfair+Display:ital,wght@0,400;0,600;0,700;1,400&display=swap" rel="stylesheet" />
@@ -29,15 +30,17 @@
 
       <!-- ── Login mode ── -->
       <div id="login-mode">
-        <div class="form-field">
-          <label for="login-username" class="form-label">Username</label>
-          <input id="login-username" type="text" class="form-input" autocomplete="username" />
-        </div>
-        <div class="form-field">
-          <label for="login-password" class="form-label">Password</label>
-          <input id="login-password" type="password" class="form-input" autocomplete="current-password" />
-        </div>
-        <button id="login-btn" class="btn btn-primary btn-full">Enter the Vault</button>
+        <form id="login-form" onsubmit="event.preventDefault();">
+          <div class="form-field">
+            <label for="login-username" class="form-label">Username</label>
+            <input id="login-username" type="text" class="form-input" autocomplete="username" />
+          </div>
+          <div class="form-field">
+            <label for="login-password" class="form-label">Password</label>
+            <input id="login-password" type="password" class="form-input" autocomplete="current-password" />
+          </div>
+          <button id="login-btn" type="submit" class="btn btn-primary btn-full">Enter the Vault</button>
+        </form>
         <p id="login-error" class="login-error hidden"></p>
         <p class="auth-toggle">New here? <button type="button" id="show-register-btn" class="toggle-btn">Create an account</button></p>
       </div>
@@ -126,13 +129,14 @@
         <span class="nav-rule-line"></span>
       </div>
       <div class="nav-drawer-items" role="menu">
-        <button class="nav-item" data-view="library" role="menuitem"><span class="nav-item-gem">◆</span><span class="nav-item-label">Library</span></button>
-        <button class="nav-item" data-view="collections" role="menuitem"><span class="nav-item-gem">◇</span><span class="nav-item-label">Collections</span></button>
-        <button class="nav-item" data-view="downloads" role="menuitem"><span class="nav-item-gem">◇</span><span class="nav-item-label">Downloads</span></button>
-        <button class="nav-item" data-view="statistics" role="menuitem"><span class="nav-item-gem">◇</span><span class="nav-item-label">Statistics</span></button>
-        <button class="nav-item" data-view="accounts" role="menuitem"><span class="nav-item-gem">◇</span><span class="nav-item-label">Connected Accounts</span></button>
-        <button class="nav-item" data-view="settings" role="menuitem"><span class="nav-item-gem">◇</span><span class="nav-item-label">Settings</span></button>
-        <button class="nav-item" data-view="import" role="menuitem"><span class="nav-item-gem">◇</span><span class="nav-item-label">Import Center</span></button>
+        <button class="nav-item" data-view="library" role="menuitem"><span class="nav-item-gem">◆</span><span class="nav-item-label" data-i18n="nav.library">Library</span></button>
+        <button class="nav-item" data-view="collections" role="menuitem"><span class="nav-item-gem">◇</span><span class="nav-item-label" data-i18n="nav.collections">Collections</span></button>
+        <button class="nav-item" data-view="downloads" role="menuitem"><span class="nav-item-gem">◇</span><span class="nav-item-label" data-i18n="nav.downloads">Downloads</span></button>
+        <button class="nav-item" data-view="timeline" role="menuitem"><span class="nav-item-gem">◇</span><span class="nav-item-label" data-i18n="nav.timeline">Timeline</span></button>
+        <button class="nav-item" data-view="statistics" role="menuitem"><span class="nav-item-gem">◇</span><span class="nav-item-label" data-i18n="nav.statistics">Statistics</span></button>
+        <button class="nav-item" data-view="accounts" role="menuitem"><span class="nav-item-gem">◇</span><span class="nav-item-label" data-i18n="nav.accounts">Connected Accounts</span></button>
+        <button class="nav-item" data-view="settings" role="menuitem"><span class="nav-item-gem">◇</span><span class="nav-item-label" data-i18n="nav.settings">Settings</span></button>
+        <button class="nav-item" data-view="import" role="menuitem"><span class="nav-item-gem">◇</span><span class="nav-item-label" data-i18n="nav.imports">Import Center</span></button>
       </div>
       <div class="nav-drawer-rule nav-drawer-rule-sm" aria-hidden="true">
         <span class="nav-rule-line"></span>
@@ -140,8 +144,8 @@
         <span class="nav-rule-line"></span>
       </div>
       <div class="nav-drawer-footer">
-        <button id="nav-privacy-btn" class="nav-item nav-footer-item"><span class="nav-item-gem">◉</span><span class="nav-item-label">Privacy Mode</span><span id="nav-privacy-status" class="nav-status-badge">Off</span></button>
-        <button id="nav-logout-btn" class="nav-item nav-footer-item nav-logout"><span class="nav-item-gem">◇</span><span class="nav-item-label">Sign Out</span></button>
+        <button id="nav-privacy-btn" class="nav-item nav-footer-item"><span class="nav-item-gem">◉</span><span class="nav-item-label" data-i18n="settings.privacy.privacyMode">Privacy Mode</span><span id="nav-privacy-status" class="nav-status-badge">Off</span></button>
+        <button id="nav-logout-btn" class="nav-item nav-footer-item nav-logout"><span class="nav-item-gem">◇</span><span class="nav-item-label" data-i18n="nav.signOut">Sign Out</span></button>
       </div>
     </nav>
 
@@ -152,14 +156,14 @@
           <span class="ornament-gem">◆</span>
           <span class="ornament-line"></span>
         </div>
-        <h2 class="vault-closed-title">Story Vault</h2>
-        <p class="vault-closed-sub">Private Literary Archive</p>
+        <h2 class="vault-closed-title" data-i18n="vault.title">Story Vault</h2>
+        <p class="vault-closed-sub" data-i18n="vault.tagline">Private Literary Archive</p>
         <div class="ornament-row">
           <span class="ornament-line"></span>
           <span class="ornament-gem">◆</span>
           <span class="ornament-line"></span>
         </div>
-        <button id="open-vault-btn" class="btn btn-primary">▼ Open Vault</button>
+        <button id="open-vault-btn" class="btn btn-primary" data-i18n="vault.openBtn">▼ Open Vault</button>
       </div>
     </div>
 
@@ -193,6 +197,9 @@
             </select>
             <select id="filter-collection" class="filter-select">
               <option value="">All collections</option>
+            </select>
+            <select id="filter-label" class="filter-select">
+              <option value="">All labels</option>
             </select>
           </div>
           <div class="action-group">
@@ -394,8 +401,8 @@
       <div id="view-collections" class="view hidden">
         <div class="page-head">
           <div class="page-head-ornament" aria-hidden="true"><span class="page-rule-line"></span><span class="page-rule-gem">◈ ◆ ◈</span><span class="page-rule-line"></span></div>
-          <h2 class="page-title">Collections</h2>
-          <p class="page-sub">Your curated reading lists</p>
+          <h2 class="page-title" data-i18n="page.collections.title">Collections</h2>
+          <p class="page-sub" data-i18n="page.collections.sub">Your curated reading lists</p>
         </div>
         <div class="page-body">
           <div class="page-actions-row">
@@ -411,18 +418,28 @@
       <div id="view-downloads" class="view hidden">
         <div class="page-head">
           <div class="page-head-ornament" aria-hidden="true"><span class="page-rule-line"></span><span class="page-rule-gem">◈ ◆ ◈</span><span class="page-rule-line"></span></div>
-          <h2 class="page-title">Downloads</h2>
-          <p class="page-sub">Offline reading library</p>
+          <h2 class="page-title" data-i18n="page.downloads.title">Downloads</h2>
+          <p class="page-sub" data-i18n="page.downloads.sub">Offline reading library</p>
         </div>
         <div class="page-body" id="downloads-page-body"></div>
+      </div>
+
+      <!-- ── View: Timeline ────────────────────────────────────────────── -->
+      <div id="view-timeline" class="view hidden">
+        <div class="page-head">
+          <div class="page-head-ornament" aria-hidden="true"><span class="page-rule-line"></span><span class="page-rule-gem">◈ ◆ ◈</span><span class="page-rule-line"></span></div>
+          <h2 class="page-title" data-i18n="nav.timeline">Timeline</h2>
+          <p class="page-sub">Your reading journal</p>
+        </div>
+        <div class="page-body" id="timeline-page-body"></div>
       </div>
 
       <!-- ── View: Statistics ────────────────────────────────────────── -->
       <div id="view-statistics" class="view hidden">
         <div class="page-head">
           <div class="page-head-ornament" aria-hidden="true"><span class="page-rule-line"></span><span class="page-rule-gem">◈ ◆ ◈</span><span class="page-rule-line"></span></div>
-          <h2 class="page-title">Statistics</h2>
-          <p class="page-sub">Reading analytics and vault insights</p>
+          <h2 class="page-title" data-i18n="page.statistics.title">Statistics</h2>
+          <p class="page-sub" data-i18n="page.statistics.sub">Reading analytics and vault insights</p>
         </div>
         <div class="page-body" id="stats-page-body"></div>
       </div>
@@ -431,8 +448,8 @@
       <div id="view-accounts" class="view hidden">
         <div class="page-head">
           <div class="page-head-ornament" aria-hidden="true"><span class="page-rule-line"></span><span class="page-rule-gem">◈ ◆ ◈</span><span class="page-rule-line"></span></div>
-          <h2 class="page-title">Connected Accounts</h2>
-          <p class="page-sub">Reading platform accounts linked to your vault</p>
+          <h2 class="page-title" data-i18n="page.accounts.title">Connected Accounts</h2>
+          <p class="page-sub" data-i18n="page.accounts.sub">Reading platform accounts linked to your vault</p>
         </div>
         <div class="page-body">
           <div class="page-actions-row">
@@ -446,21 +463,21 @@
       <div id="view-settings" class="view hidden">
         <div class="page-head">
           <div class="page-head-ornament" aria-hidden="true"><span class="page-rule-line"></span><span class="page-rule-gem">◈ ◆ ◈</span><span class="page-rule-line"></span></div>
-          <h2 class="page-title">Settings</h2>
-          <p class="page-sub">Appearance and privacy preferences</p>
+          <h2 class="page-title" data-i18n="page.settings.title">Settings</h2>
+          <p class="page-sub" data-i18n="page.settings.sub">Appearance and preferences</p>
         </div>
         <div class="page-body settings-body">
 
           <div class="settings-section">
-            <h3 class="settings-section-title">Theme</h3>
+            <h3 class="settings-section-title" data-i18n="settings.sections.theme">Theme</h3>
             <div class="setting-row setting-row-info">
               <div class="setting-info">
-                <span class="setting-label">Light / Dark</span>
+                <span class="setting-label" data-i18n="settings.theme.lightDark">Light / Dark</span>
               </div>
               <button id="settings-theme-btn" class="setting-toggle-btn"><span id="settings-theme-status">Light</span></button>
             </div>
             <div class="setting-row">
-              <span class="setting-label">Accent colour</span>
+              <span class="setting-label" data-i18n="settings.theme.accent">Accent colour</span>
               <div class="metal-toggle" role="group" aria-label="Accent metal">
                 <button class="metal-btn" data-metal="gold" title="Gold">Gold</button>
                 <button class="metal-btn" data-metal="silver" title="Silver">Silver</button>
@@ -469,65 +486,76 @@
             </div>
             <div class="setting-row setting-row-info">
               <div class="setting-info">
-                <span class="setting-label">Card density</span>
-                <span class="setting-hint">Comfortable shows more detail per card; Compact shows more cards</span>
+                <span class="setting-label" data-i18n="settings.theme.density">Card density</span>
+                <span class="setting-hint" data-i18n="settings.theme.densityHint">Comfortable shows more detail per card; Compact shows more cards</span>
               </div>
               <button id="settings-density-btn" class="setting-toggle-btn"><span id="settings-density-status">Comfortable</span></button>
             </div>
           </div>
 
           <div class="settings-section">
-            <h3 class="settings-section-title">Privacy</h3>
+            <h3 class="settings-section-title" data-i18n="settings.sections.privacy">Privacy</h3>
             <div class="setting-row setting-row-info">
               <div class="setting-info">
-                <span class="setting-label">Privacy Mode</span>
-                <span class="setting-hint">Vault always starts closed each session, regardless of last state</span>
+                <span class="setting-label" data-i18n="settings.privacy.privacyMode">Privacy Mode</span>
+                <span class="setting-hint" data-i18n="settings.privacy.privacyModeHint">Vault always starts closed each session, regardless of last state</span>
               </div>
               <button id="settings-privacy-btn" class="setting-toggle-btn"><span id="settings-privacy-status">Off</span></button>
             </div>
             <div class="setting-row setting-row-info">
               <div class="setting-info">
-                <span class="setting-label">Remember vault state</span>
-                <span class="setting-hint">Restore open / closed state between sessions when Privacy Mode is off</span>
+                <span class="setting-label" data-i18n="settings.privacy.rememberVault">Remember vault state</span>
+                <span class="setting-hint" data-i18n="settings.privacy.rememberVaultHint">Restore open / closed state between sessions when Privacy Mode is off</span>
               </div>
               <button id="settings-remember-vault-btn" class="setting-toggle-btn"><span id="settings-remember-vault-status">On</span></button>
             </div>
           </div>
 
           <div class="settings-section">
-            <h3 class="settings-section-title">Extension</h3>
+            <h3 class="settings-section-title" data-i18n="settings.sections.extension">Extension</h3>
             <div class="setting-row setting-row-info">
               <div class="setting-info">
-                <span class="setting-label">Auto-log AO3 pages</span>
-                <span class="setting-hint">Automatically record reading history when you visit AO3</span>
+                <span class="setting-label" data-i18n="settings.extension.autoLog">Auto-log AO3 pages</span>
+                <span class="setting-hint" data-i18n="settings.extension.autoLogHint">Automatically record reading history when you visit AO3</span>
               </div>
               <button id="settings-auto-log-btn" class="setting-toggle-btn"><span id="settings-auto-log-status">On</span></button>
             </div>
             <div class="setting-row setting-row-info">
               <div class="setting-info">
-                <span class="setting-label">Show extension status</span>
-                <span class="setting-hint">Display toast notifications when the extension logs a page</span>
+                <span class="setting-label" data-i18n="settings.extension.showToast">Show extension status</span>
+                <span class="setting-hint" data-i18n="settings.extension.showToastHint">Display toast notifications when the extension logs a page</span>
               </div>
               <button id="settings-show-toast-btn" class="setting-toggle-btn"><span id="settings-show-toast-status">On</span></button>
             </div>
           </div>
 
           <div class="settings-section">
-            <h3 class="settings-section-title">Display</h3>
+            <h3 class="settings-section-title" data-i18n="settings.sections.display">Display</h3>
             <div class="setting-row setting-row-info">
               <div class="setting-info">
-                <span class="setting-label">Show kudos icon</span>
-                <span class="setting-hint">Show a heart icon on story cards where kudos was given</span>
+                <span class="setting-label" data-i18n="settings.display.showKudos">Show kudos icon</span>
+                <span class="setting-hint" data-i18n="settings.display.showKudosHint">Show a heart icon on story cards where kudos was given</span>
               </div>
               <button id="settings-show-kudos-btn" class="setting-toggle-btn"><span id="settings-show-kudos-status">On</span></button>
             </div>
             <div class="setting-row setting-row-info">
               <div class="setting-info">
-                <span class="setting-label">Show collection chips</span>
-                <span class="setting-hint">Show collection badges on story cards</span>
+                <span class="setting-label" data-i18n="settings.display.showChips">Show collection chips</span>
+                <span class="setting-hint" data-i18n="settings.display.showChipsHint">Show collection badges on story cards</span>
               </div>
               <button id="settings-show-chips-btn" class="setting-toggle-btn"><span id="settings-show-chips-status">On</span></button>
             </div>
+          </div>
+
+          <div class="settings-section">
+            <h3 class="settings-section-title" data-i18n="settings.sections.language">Language</h3>
+            <div class="setting-row setting-row-info">
+              <div class="setting-info">
+                <span class="setting-label" data-i18n="settings.language.label">Interface language</span>
+                <span class="setting-hint" data-i18n="settings.language.labelHint">Translates StoryVault interface only. Story content is never translated.</span>
+              </div>
+            </div>
+            <div id="lang-selector" class="lang-selector-grid"></div>
           </div>
 
         </div>
@@ -537,8 +565,8 @@
       <div id="view-import" class="view hidden">
         <div class="page-head">
           <div class="page-head-ornament" aria-hidden="true"><span class="page-rule-line"></span><span class="page-rule-gem">◈ ◆ ◈</span><span class="page-rule-line"></span></div>
-          <h2 class="page-title">Import Center</h2>
-          <p class="page-sub">Bulk import from AO3 and other platforms</p>
+          <h2 class="page-title" data-i18n="page.imports.title">Import Center</h2>
+          <p class="page-sub" data-i18n="page.imports.sub">Bulk import from AO3 and other platforms</p>
         </div>
         <div class="page-body" id="import-page-body"></div>
       </div>
@@ -758,7 +786,78 @@
     </div>
   </div>
 
+  <script src="i18n.js"></script>
   <script src="app.js"></script>
+  <script>
+    (function () {
+      var API_BASE = 'http://localhost:8080/api/v1';
+
+      function resetBtn() {
+        var btn = document.getElementById('login-btn');
+        btn.disabled    = false;
+        btn.textContent = 'Enter the Vault';
+      }
+
+      function showError(msg) {
+        var errEl = document.getElementById('login-error');
+        errEl.textContent = msg;
+        errEl.classList.remove('hidden');
+      }
+
+      async function loginHandler() {
+        var username = document.getElementById('login-username').value.trim();
+        var password = document.getElementById('login-password').value;
+        var btn      = document.getElementById('login-btn');
+
+        if (btn.disabled) return;
+        document.getElementById('login-error').classList.add('hidden');
+
+        if (!username || !password) {
+          showError('Enter your username and password.');
+          return;
+        }
+
+        btn.disabled    = true;
+        btn.textContent = 'Opening vault…';
+
+        var res, body;
+        try {
+          res = await fetch(API_BASE + '/auth/login', {
+            method:  'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body:    JSON.stringify({ username: username, password: password }),
+          });
+          body = await res.json();
+        } catch (err) {
+          showError('Could not reach StoryVault. Is the service running on localhost:8080?');
+          resetBtn();
+          return;
+        }
+
+        if (!res.ok) {
+          showError('Incorrect username or password.');
+          resetBtn();
+          return;
+        }
+
+        var token = body.data && body.data.token;
+        if (!token) {
+          showError('Login failed: no token in response.');
+          resetBtn();
+          return;
+        }
+
+        localStorage.setItem('sv_token', token);
+        localStorage.setItem('sv_vault_open', '1');
+        window.location.reload();
+      }
+
+      document.getElementById('login-btn').addEventListener('click', loginHandler);
+      document.getElementById('login-password').addEventListener('keydown', function (e) {
+        if (e.key === 'Enter') loginHandler();
+      });
+    })();
+  </script>
 
   <div class="page-frame" aria-hidden="true">
     <span class="frame-corner frame-tl">◆</span>

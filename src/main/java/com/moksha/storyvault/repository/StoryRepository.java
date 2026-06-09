@@ -58,4 +58,10 @@ public interface StoryRepository extends JpaRepository<Story, Long>, JpaSpecific
 
     @Query("SELECT s.id, s.title, s.lastAccessedAt FROM Story s WHERE s.user = :user AND s.lastAccessedAt IS NOT NULL ORDER BY s.lastAccessedAt DESC")
     List<Object[]> recentlyAccessedByUser(@Param("user") User user, Pageable pageable);
+
+    @Query("SELECT COUNT(s) FROM Story s WHERE s.user = :user AND s.personalNotes IS NOT NULL AND s.personalNotes <> ''")
+    long countStoriesWithNotesByUser(@Param("user") User user);
+
+    @Query("SELECT COUNT(DISTINCT s.id) FROM Story s JOIN s.labels l WHERE s.user = :user")
+    long countLabeledStoriesByUser(@Param("user") User user);
 }

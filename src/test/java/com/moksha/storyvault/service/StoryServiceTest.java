@@ -40,6 +40,7 @@ class StoryServiceTest {
     @Mock ReadingHistoryRepository readingHistoryRepository;
     @Mock ConnectedAccountRepository connectedAccountRepository;
     @Mock SecurityUtils securityUtils;
+    @Mock TimelineService timelineService;
 
     @InjectMocks StoryServiceImpl service;
 
@@ -223,6 +224,19 @@ class StoryServiceTest {
 
         assertThat(resp.getCurrentChapterUrl()).isNull();
         assertThat(resp.getOriginalUrl()).isEqualTo("https://archiveofourown.org/works/99999");
+    }
+
+    @Test
+    void upsert_does_not_overwrite_personal_notes() {
+        story.setPersonalNotes("my personal note that must survive a metadata refresh");
+
+        UpsertResult result = service.upsert(StoryRequest.builder()
+                .title("Test Story").author("Author").fandom("Fandom")
+                .platform(Platform.AO3).sourceWorkId("99999")
+                .build());
+
+        assertThat(result.story().getPersonalNotes())
+                .isEqualTo("my personal note that must survive a metadata refresh");
     }
 
     @Test

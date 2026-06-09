@@ -57,6 +57,15 @@ public class Story {
     @Column(columnDefinition = "TEXT")
     private String summary;
 
+    @Column(name = "personal_notes", columnDefinition = "TEXT")
+    private String personalNotes;
+
+    @Column(name = "personal_note_created_at")
+    private LocalDateTime personalNoteCreatedAt;
+
+    @Column(name = "personal_note_updated_at")
+    private LocalDateTime personalNoteUpdatedAt;
+
     @Column(name = "original_url", length = 2048)
     private String originalUrl;
 
@@ -136,6 +145,10 @@ public class Story {
     @Builder.Default
     private List<DownloadRecord> downloadRecords = new ArrayList<>();
 
+    @OneToMany(mappedBy = "story", cascade = CascadeType.REMOVE, orphanRemoval = false)
+    @Builder.Default
+    private List<TimelineEvent> timelineEvents = new ArrayList<>();
+
     @OneToOne(mappedBy = "story", cascade = CascadeType.ALL, orphanRemoval = true)
     private StoryFile storyFile;
 
@@ -172,4 +185,14 @@ public class Story {
     @BatchSize(size = 30)
     @Builder.Default
     private Set<Shelf> collections = new HashSet<>();
+
+    @ManyToMany(fetch = FetchType.LAZY)
+    @JoinTable(
+        name = "story_labels",
+        joinColumns = @JoinColumn(name = "story_id"),
+        inverseJoinColumns = @JoinColumn(name = "label_id")
+    )
+    @BatchSize(size = 30)
+    @Builder.Default
+    private Set<Label> labels = new HashSet<>();
 }

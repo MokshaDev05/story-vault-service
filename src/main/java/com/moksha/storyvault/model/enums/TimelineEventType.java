@@ -1,0 +1,16 @@
+package com.moksha.storyvault.model.enums;
+
+public enum TimelineEventType {
+    STORY_FIRST_SEEN,
+    STORY_REVISITED,
+    CHAPTER_PROGRESS_UPDATED,
+    READING_STATUS_CHANGED,
+    KUDOS_GIVEN,
+    COLLECTION_ADDED,
+    COLLECTION_REMOVED,
+    NOTE_ADDED,
+    NOTE_EDITED,
+    PERSONAL_LABEL_ADDED,
+    DOWNLOAD_RECORDED,
+    IMPORT_COMPLETED
+}

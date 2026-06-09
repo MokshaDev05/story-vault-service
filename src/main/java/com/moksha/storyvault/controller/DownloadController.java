@@ -1,6 +1,7 @@
 package com.moksha.storyvault.controller;
 
 import com.moksha.storyvault.dto.ApiResponse;
+import com.moksha.storyvault.dto.DownloadFilterRequest;
 import com.moksha.storyvault.dto.DownloadRecordRequest;
 import com.moksha.storyvault.dto.DownloadRecordResponse;
 import com.moksha.storyvault.service.DownloadService;
@@ -20,6 +21,13 @@ public class DownloadController {
     @GetMapping("/api/v1/downloads")
     public ResponseEntity<ApiResponse<List<DownloadRecordResponse>>> getAllDownloads() {
         return ResponseEntity.ok(ApiResponse.success("Downloads retrieved", downloadService.getAllDownloads()));
+    }
+
+    @PostMapping("/api/v1/downloads/filter")
+    public ResponseEntity<ApiResponse<List<DownloadRecordResponse>>> filterDownloads(
+            @RequestBody DownloadFilterRequest request) {
+        return ResponseEntity.ok(ApiResponse.success("Downloads filtered",
+                downloadService.filterDownloads(request)));
     }
 
     @PostMapping("/api/v1/stories/{storyId}/downloads")

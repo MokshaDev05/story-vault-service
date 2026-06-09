@@ -2,7 +2,6 @@ package com.moksha.storyvault.model;
 
 import jakarta.persistence.*;
 import lombok.*;
-import org.hibernate.annotations.CreationTimestamp;
 
 import java.time.LocalDateTime;
 
@@ -23,7 +22,6 @@ public class ReadingHistory {
     @JoinColumn(name = "story_id", nullable = false)
     private Story story;
 
-    @CreationTimestamp
     @Column(nullable = false, updatable = false)
     private LocalDateTime accessedAt;
 

@@ -1,5 +1,6 @@
 package com.moksha.storyvault.service;
 
+import com.moksha.storyvault.dto.PersonalNoteResponse;
 import com.moksha.storyvault.dto.StoryPublicResponse;
 import com.moksha.storyvault.dto.StoryRequest;
 import com.moksha.storyvault.dto.StoryResponse;
@@ -31,4 +32,13 @@ public interface StoryService {
     List<StoryResponse> advancedSearch(StorySearchRequest request);
 
     StoryPublicResponse getPublicView(Long id);
+
+    StoryResponse updatePersonalNote(Long id, String content);
+
+    PersonalNoteResponse getPersonalNote(Long storyId);
+
+    /** Create note; throws DuplicateNoteException if the story already has one. */
+    PersonalNoteResponse createPersonalNote(Long storyId, String content);
+
+    void deletePersonalNote(Long storyId);
 }

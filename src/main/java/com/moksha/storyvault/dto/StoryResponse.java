@@ -12,6 +12,8 @@ import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Set;
 
+import com.moksha.storyvault.dto.LabelSummary;
+
 @Getter
 @Builder
 @NoArgsConstructor
@@ -53,4 +55,8 @@ public class StoryResponse {
     private LocalDateTime kudosDetectedAt;
     private Long sourceAccountId;
     private List<ShelfSummary> collections;
+    private String personalNotes;
+    private boolean hasNote;
+    private String notePreview;
+    private List<LabelSummary> labels;
 }

@@ -15,6 +15,9 @@ public class DownloadRecordResponse {
     private Long id;
     private Long storyId;
     private String storyTitle;
+    private String storyFandom;
+    private String storyAuthor;
+    private String storyOriginalUrl;
     private Platform platform;
     private FileType fileType;
     private String fileName;

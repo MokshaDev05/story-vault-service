@@ -64,6 +64,7 @@ public class ReadingHistoryServiceImpl implements ReadingHistoryService {
                 .chapterAo3Id(request.getChapterAo3Id())
                 .readingMode(request.getReadingMode())
                 .eventType(request.getEventType() != null ? request.getEventType() : "PAGE_LOAD")
+                .accessedAt(LocalDateTime.now())
                 .build();
 
         ReadingHistory saved = readingHistoryRepository.save(entry);
@@ -72,6 +73,36 @@ public class ReadingHistoryServiceImpl implements ReadingHistoryService {
         storyRepository.save(story);
 
         return toResponse(saved);
+    }
+
+    @Override
+    @Transactional
+    public ReadingHistoryResponse logImported(Long storyId, LocalDateTime accessedAt) {
+        User user = securityUtils.currentUser();
+        Story story = storyRepository.findByIdAndUser(storyId, user)
+                .orElseThrow(() -> new StoryNotFoundException(storyId));
+
+        // Dedup: skip if an AO3_IMPORT entry already exists for this story on the same calendar day
+        LocalDateTime startOfDay = accessedAt.toLocalDate().atStartOfDay();
+        LocalDateTime endOfDay   = startOfDay.plusDays(1);
+        if (readingHistoryRepository.existsByStoryAndEventTypeAndAccessedAtBetween(
+                story, "AO3_IMPORT", startOfDay, endOfDay)) {
+            return readingHistoryRepository
+                    .findTopByStoryAndEventTypeOrderByAccessedAtDesc(story, "AO3_IMPORT")
+                    .map(this::toResponse)
+                    .orElse(null);
+        }
+
+        ReadingHistory entry = ReadingHistory.builder()
+                .story(story)
+                .userId(user.getId())
+                .workId(story.getSourceWorkId())
+                .sourcePlatform("AO3")
+                .eventType("AO3_IMPORT")
+                .accessedAt(accessedAt)
+                .build();
+
+        return toResponse(readingHistoryRepository.save(entry));
     }
 
     @Override

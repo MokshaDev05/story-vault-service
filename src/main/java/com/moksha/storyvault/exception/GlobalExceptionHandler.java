@@ -52,6 +52,27 @@ public class GlobalExceptionHandler {
                 .body(ApiResponse.error(ex.getMessage()));
     }
 
+    @ExceptionHandler(LabelNotFoundException.class)
+    public ResponseEntity<ApiResponse<Void>> handleLabelNotFound(LabelNotFoundException ex) {
+        log.warn("Label not found: {}", ex.getMessage());
+        return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                .body(ApiResponse.error(ex.getMessage()));
+    }
+
+    @ExceptionHandler(DuplicateLabelException.class)
+    public ResponseEntity<ApiResponse<Void>> handleDuplicateLabel(DuplicateLabelException ex) {
+        log.info("Duplicate label: {}", ex.getMessage());
+        return ResponseEntity.status(HttpStatus.CONFLICT)
+                .body(ApiResponse.error(ex.getMessage()));
+    }
+
+    @ExceptionHandler(DuplicateNoteException.class)
+    public ResponseEntity<ApiResponse<Void>> handleDuplicateNote(DuplicateNoteException ex) {
+        log.info("Duplicate note: {}", ex.getMessage());
+        return ResponseEntity.status(HttpStatus.CONFLICT)
+                .body(ApiResponse.error(ex.getMessage()));
+    }
+
     @ExceptionHandler(DownloadRecordNotFoundException.class)
     public ResponseEntity<ApiResponse<Void>> handleDownloadNotFound(DownloadRecordNotFoundException ex) {
         log.warn("Download record not found: {}", ex.getMessage());
@@ -63,6 +84,20 @@ public class GlobalExceptionHandler {
     public ResponseEntity<ApiResponse<Void>> handleShelfNotFound(ShelfNotFoundException ex) {
         log.warn("Collection not found: {}", ex.getMessage());
         return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                .body(ApiResponse.error(ex.getMessage()));
+    }
+
+    @ExceptionHandler(ImportJobNotFoundException.class)
+    public ResponseEntity<ApiResponse<Void>> handleImportJobNotFound(ImportJobNotFoundException ex) {
+        log.warn("Import job not found: {}", ex.getMessage());
+        return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                .body(ApiResponse.error(ex.getMessage()));
+    }
+
+    @ExceptionHandler(IllegalImportStateException.class)
+    public ResponseEntity<ApiResponse<Void>> handleIllegalImportState(IllegalImportStateException ex) {
+        log.warn("Illegal import state transition: {}", ex.getMessage());
+        return ResponseEntity.status(HttpStatus.CONFLICT)
                 .body(ApiResponse.error(ex.getMessage()));
     }
 

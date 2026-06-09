@@ -1,9 +1,18 @@
 'use strict';
 
+// Fallback so any t() call is safe even if i18n.js failed to load
+if (typeof window.t !== 'function') {
+  window.t = key => key;
+}
+if (typeof window.i18n !== 'object' || !window.i18n) {
+  window.i18n = { load: () => {}, apply: () => {}, setLang: () => {}, getLang: () => 'en', SUPPORTED_LANGS: {} };
+}
+
 const API = 'http://localhost:8080/api/v1';
 
 let allStories = [];
 let allCollections = [];
+let allLabels = [];
 let token = localStorage.getItem('sv_token');
 let editingStoryId = null;
 let advancedMode = false;      // true when showing POST /search results
@@ -27,17 +36,34 @@ document.addEventListener('DOMContentLoaded', () => {
   loadDensity();
   loadDisplayPrefs();
   bindEvents();
+  try { i18n.load(); } catch (e) { console.warn('[StoryVault] i18n load failed:', e); }
   token ? boot() : showLogin();
 });
+
+function isTokenExpired(tok) {
+  try {
+    const b64 = tok.split('.')[1].replace(/-/g, '+').replace(/_/g, '/');
+    const padded = b64 + '='.repeat((4 - b64.length % 4) % 4);
+    return JSON.parse(atob(padded)).exp * 1000 < Date.now();
+  } catch { return true; }
+}
+
+function completeLogin(newToken) {
+  token = newToken;
+  localStorage.setItem('sv_vault_open', '1');
+  boot();
+}
 
 function boot() {
   showApp();
   navigateTo('library');
   loadVaultState();
+  try { i18n.apply(); } catch (e) { console.warn('i18n apply failed:', e); }
   if (vaultOpen) {
     dataLoaded = true;
     fetchStories();
     fetchCollections();
+    fetchLabels();
   }
 }
 
@@ -190,6 +216,8 @@ function showLoginMode() {
   el('login-mode').classList.remove('hidden');
   el('login-tagline').textContent = 'Your private literary archive.';
   el('login-error').classList.add('hidden');
+  const btn = el('login-btn');
+  if (btn) { btn.disabled = false; btn.textContent = 'Enter the Vault'; }
   setTimeout(() => el('login-username').focus(), 50);
 }
 
@@ -201,51 +229,9 @@ function showRegisterMode() {
   el('reg-username').value  = '';
   el('reg-password').value  = '';
   el('reg-confirm').value   = '';
+  const btn = el('register-btn');
+  if (btn) { btn.disabled = false; btn.textContent = 'Create Account'; }
   setTimeout(() => el('reg-username').focus(), 50);
-}
-
-async function login() {
-  const username = el('login-username').value.trim();
-  const password = el('login-password').value;
-  const btn      = el('login-btn');
-  const errEl    = el('login-error');
-
-  errEl.classList.add('hidden');
-
-  if (!username || !password) {
-    errEl.textContent = 'Enter your username and password.';
-    errEl.classList.remove('hidden');
-    return;
-  }
-
-  btn.disabled    = true;
-  btn.textContent = 'Opening vault…';
-
-  try {
-    const res  = await fetch(`${API}/auth/login`, {
-      method:  'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body:    JSON.stringify({ username, password }),
-    });
-
-    if (!res.ok) {
-      errEl.textContent = 'Incorrect username or password.';
-      errEl.classList.remove('hidden');
-      btn.disabled    = false;
-      btn.textContent = 'Enter the Vault';
-      return;
-    }
-
-    const body = await res.json();
-    token = body.data.token;
-    localStorage.setItem('sv_token', token);
-    boot();
-  } catch {
-    errEl.textContent = 'Could not reach StoryVault. Is the service running on localhost:8080?';
-    errEl.classList.remove('hidden');
-    btn.disabled    = false;
-    btn.textContent = 'Enter the Vault';
-  }
 }
 
 async function register() {
@@ -321,6 +307,7 @@ async function register() {
 function logout() {
   token = null;
   localStorage.removeItem('sv_token');
+  localStorage.removeItem('sv_vault_open');
   allStories = [];
   allCollections = [];
   quickFilters = {};
@@ -450,6 +437,32 @@ async function fetchCollections() {
   } catch {}
 }
 
+async function fetchLabels() {
+  try {
+    const res = await fetch(`${API}/labels`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (!res.ok) return;
+    const body = await res.json();
+    allLabels = body.data || [];
+    renderLabelFilter();
+  } catch {}
+}
+
+function renderLabelFilter() {
+  const sel = el('filter-label');
+  if (!sel) return;
+  const current = sel.value;
+  while (sel.options.length > 1) sel.remove(1);
+  allLabels.forEach(lb => {
+    const opt = document.createElement('option');
+    opt.value = String(lb.id);
+    opt.textContent = lb.name;
+    sel.add(opt);
+  });
+  if (current) sel.value = current;
+}
+
 function renderCollectionFilter() {
   const sel = el('filter-collection');
   if (!sel) return;
@@ -480,7 +493,7 @@ function closeCollectionsModal() {
 
 async function renderCollectionsList() {
   const container = el('collections-list');
-  container.innerHTML = '<p class="loading-state" style="padding:12px 0;">Loading…</p>';
+  container.innerHTML = `<p class="loading-state" style="padding:12px 0;">${t('ui.loading')}</p>`;
   try {
     const res = await fetch(`${API}/collections`, {
       headers: { Authorization: `Bearer ${token}` },
@@ -601,11 +614,12 @@ async function confirmDeleteCollectionFromList(id, btn) {
 function applyFilters() {
   if (advancedMode) return;  // advanced search results are already rendered
 
-  const search     = el('search-input').value.toLowerCase().trim();
-  const platform   = el('filter-platform').value;
-  const status     = el('filter-status').value;
-  const kudos      = el('filter-kudos').value;
-  const collFilter = el('filter-collection').value;
+  const search      = el('search-input').value.toLowerCase().trim();
+  const platform    = el('filter-platform').value;
+  const status      = el('filter-status').value;
+  const kudos       = el('filter-kudos').value;
+  const collFilter  = el('filter-collection').value;
+  const labelFilter = el('filter-label') ? el('filter-label').value : '';
 
   let list = allStories;
 
@@ -616,7 +630,9 @@ function applyFilters() {
       s.fandom.toLowerCase().includes(search) ||
       (s.tags          || []).some(t => t.toLowerCase().includes(search)) ||
       (s.relationships || []).some(r => r.toLowerCase().includes(search)) ||
-      (s.characters    || []).some(c => c.toLowerCase().includes(search))
+      (s.characters    || []).some(c => c.toLowerCase().includes(search)) ||
+      (s.personalNotes || '').toLowerCase().includes(search) ||
+      (s.labels        || []).some(l => l.name.toLowerCase().includes(search))
     );
   }
   if (platform) list = list.filter(s => s.platform === platform);
@@ -625,6 +641,8 @@ function applyFilters() {
   if (kudos === 'NOT_GIVEN') list = list.filter(s => s.kudosStatus !== 'GIVEN');
   if (collFilter) list = list.filter(s =>
     (s.collections || []).some(c => String(c.id) === collFilter));
+  if (labelFilter) list = list.filter(s =>
+    (s.labels || []).some(l => String(l.id) === labelFilter));
 
   if (quickFilters.author)
     list = list.filter(s => s.author.toLowerCase() === quickFilters.author.toLowerCase());
@@ -794,8 +812,8 @@ function updateAdvChips(req) {
 
   add('Platform', req.platform);
   add('Status', req.status);
-  add('Rating', req.rating ? RATING_LABELS[req.rating] : null);
-  add('Reading', req.readingStatus ? READING_STATUS_LABELS[req.readingStatus] : null);
+  add('Rating', req.rating ? t('rating.' + req.rating) : null);
+  add('Reading', req.readingStatus ? t('readingStatus.' + req.readingStatus) : null);
   add('Language', req.language);
   add('Tag', req.tagContains);
   add('Ship', req.relationshipContains);
@@ -851,10 +869,10 @@ function renderCards(stories) {
 }
 
 function cardHTML(s) {
-  const officialChip = `<span class="chip chip-${s.status.toLowerCase()}">${STATUS_LABELS[s.status] || s.status}</span>`;
+  const officialChip = `<span class="chip chip-${s.status.toLowerCase()}">${t('status.' + s.status) || s.status}</span>`;
   const badgeArea = s.readingStatus
     ? `<div class="badge-stack">
-        <span class="chip chip-rs-${s.readingStatus.toLowerCase().replace(/_/g, '-')}">${READING_STATUS_LABELS[s.readingStatus] || s.readingStatus}</span>
+        <span class="chip chip-rs-${s.readingStatus.toLowerCase().replace(/_/g, '-')}">${t('readingStatus.' + s.readingStatus) || s.readingStatus}</span>
         ${officialChip}
        </div>`
     : officialChip;
@@ -865,8 +883,8 @@ function cardHTML(s) {
         `<button class="card-ship-btn" data-filter-key="relationship" data-filter-val="${escA(r)}">${esc(r)}</button>`
       ).join(' · ')}</p>`
     : '';
-  const tags = (s.tags || []).slice(0, 5).map(t =>
-    `<button class="tag-pill tag-pill-btn" data-filter-key="tag" data-filter-val="${escA(t)}">${esc(t)}</button>`
+  const tags = (s.tags || []).slice(0, 5).map(tagName =>
+    `<button class="tag-pill tag-pill-btn" data-filter-key="tag" data-filter-val="${escA(tagName)}">${esc(tagName)}</button>`
   ).join('');
   const continueCardUrl = s.currentChapterUrl || s.originalUrl;
   const urlIcon = continueCardUrl
@@ -876,7 +894,10 @@ function cardHTML(s) {
   const kudosIcon = showKudos && s.kudosStatus === 'GIVEN' ? `<span class="card-kudos-icon" title="Kudosed">♥</span>` : '';
   const collChips = showChips ? (s.collections || []).slice(0, 3).map(c =>
     `<span class="collection-chip collection-chip-card">${esc(c.name)}</span>`).join('') : '';
-  const collRow = collChips ? `<div class="card-collections">${collChips}</div>` : '';
+  const labelChips = (s.labels || []).slice(0, 3).map(l =>
+    `<span class="label-chip label-chip-card">${esc(l.name)}</span>`).join('');
+  const bottomRow = (collChips || labelChips)
+    ? `<div class="card-collections">${collChips}${labelChips}</div>` : '';
 
   return `
     <article class="story-card" data-id="${s.id}" tabindex="0" role="button" aria-label="${escA(s.title)}">
@@ -892,9 +913,9 @@ function cardHTML(s) {
       <h2 class="card-title">${esc(s.title)}</h2>
       <p class="card-author">by <button class="card-author-btn" data-filter-key="author" data-filter-val="${escA(s.author)}">${esc(s.author)}</button></p>
       <div class="card-rule"></div>
-      ${collRow}
+      ${bottomRow}
       <div class="card-meta">
-        <span class="platform-badge">${PLATFORM_LABELS[s.platform] || s.platform}</span>
+        <span class="platform-badge">${t('platform.' + s.platform) || s.platform}</span>
         <div class="card-tags">${tags}</div>
         <div class="card-icons">${fileIcon}${kudosIcon}${urlIcon}</div>
       </div>
@@ -904,17 +925,17 @@ function cardHTML(s) {
 // ─── Detail modal ─────────────────────────────────────────────────────────────
 
 function openDetail(s) {
-  const officialChip = `<span class="chip chip-${s.status.toLowerCase()}">${STATUS_LABELS[s.status] || s.status}</span>`;
+  const officialChip = `<span class="chip chip-${s.status.toLowerCase()}">${t('status.' + s.status) || s.status}</span>`;
   const badgeArea = s.readingStatus
     ? `<div class="badge-stack">
-        <span class="chip chip-rs-${s.readingStatus.toLowerCase().replace(/_/g, '-')}">${READING_STATUS_LABELS[s.readingStatus] || s.readingStatus}</span>
+        <span class="chip chip-rs-${s.readingStatus.toLowerCase().replace(/_/g, '-')}">${t('readingStatus.' + s.readingStatus) || s.readingStatus}</span>
         ${officialChip}
        </div>`
     : officialChip;
 
   // Clickable tags filter on click
-  const tagPills = (items, filterKey) => (items || []).map(t =>
-    `<button class="tag-pill tag-pill-btn" data-filter-key="${filterKey}" data-filter-val="${escA(t)}" title="Filter by this">${esc(t)}</button>`
+  const tagPills = (items, filterKey) => (items || []).map(item =>
+    `<button class="tag-pill tag-pill-btn" data-filter-key="${filterKey}" data-filter-val="${escA(item)}" title="Filter by this">${esc(item)}</button>`
   ).join('');
 
   const tags     = tagPills(s.tags,          'tag');
@@ -934,12 +955,12 @@ function openDetail(s) {
     : '—';
 
   const metaRows = [
-    ...(s.readingStatus ? [['Reading status', READING_STATUS_LABELS[s.readingStatus] || s.readingStatus]] : []),
+    ...(s.readingStatus ? [['Reading status', t('readingStatus.' + s.readingStatus) || s.readingStatus]] : []),
     ...(s.currentChapter != null ? [['Current chapter', s.currentChapter]] : []),
     ...(s.lastAccessedAt  ? [['Last accessed',  fmtDate(s.lastAccessedAt)]]  : []),
     ...(s.firstAccessedAt ? [['First accessed', fmtDate(s.firstAccessedAt)]] : []),
     ...(s.accessCount != null ? [['Times read', s.accessCount]] : []),
-    ['Rating',          RATING_LABELS[s.rating] || s.rating],
+    ['Rating',          t('rating.' + s.rating) || s.rating],
     ['Word count',      s.wordCount ? s.wordCount.toLocaleString() : '—'],
     ['Chapters',        chapterDisplay],
     ...(s.language         ? [['Language',    esc(s.language)]]                  : []),
@@ -949,7 +970,7 @@ function openDetail(s) {
     ['Added',        fmtDate(s.createdAt)],
     ['Last updated', fmtDate(s.updatedAt)],
     ...(s.kudosStatus && s.kudosStatus !== 'UNKNOWN'
-        ? [['Kudos', KUDOS_LABELS[s.kudosStatus] || s.kudosStatus]] : []),
+        ? [['Kudos', t('kudos.' + s.kudosStatus) || s.kudosStatus]] : []),
   ].map(([label, value]) => `
     <div class="detail-row">
       <span class="detail-label">${label}</span>
@@ -973,7 +994,7 @@ function openDetail(s) {
       <h2 class="detail-title">${esc(s.title)}</h2>
       <div class="detail-byline">
         <button class="detail-author tag-pill-btn" data-filter-key="author" data-filter-val="${escA(s.author)}">by ${esc(s.author)}</button>
-        <span class="platform-badge">${PLATFORM_LABELS[s.platform] || s.platform}</span>
+        <span class="platform-badge">${t('platform.' + s.platform) || s.platform}</span>
       </div>
     </div>
     ${s.summary ? `<hr class="modal-rule" /><p class="detail-summary">${esc(s.summary)}</p>` : ''}
@@ -995,9 +1016,12 @@ function openDetail(s) {
         <button class="btn btn-danger" id="detail-delete-btn">Delete</button>
       </div>
     </div>
+    <div id="detail-personal-note"></div>
+    <div id="detail-labels"></div>
     <div id="detail-collections"></div>
     <div id="detail-notes"></div>
     <div id="detail-history"></div>
+    <div id="detail-downloads"></div>
   `;
 
   el('detail-modal').classList.remove('hidden');
@@ -1040,9 +1064,12 @@ function openDetail(s) {
     }
   });
 
+  loadPersonalNote(s.id, s.personalNotes);
+  loadDetailLabels(s.id, s.labels || []);
   loadDetailCollections(s.id, s.collections || []);
   loadReadingHistory(s.id);
   loadNotes(s.id);
+  loadDetailDownloads(s.id, s.originalUrl);
 }
 
 const HISTORY_MODE_LABELS = { CHAPTER: 'chapter', WORK_MAIN: 'main', FULL_WORK: 'full work' };
@@ -1095,6 +1122,249 @@ async function loadNotes(storyId) {
       <div class="history-label">Notes</div>
       <div class="notes-list">${body}</div>
     </div>`;
+}
+
+async function loadDetailDownloads(storyId, storyOriginalUrl) {
+  const container = el('detail-downloads');
+  if (!container) return;
+
+  const render = async () => {
+    let records = [];
+    try {
+      const res = await fetch(`${API}/stories/${storyId}/downloads`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (res.status === 401) { handleUnauthorized(); return; }
+      const body = await res.json();
+      records = body.data || [];
+    } catch { records = []; }
+
+    const FILE_FORMATS = ['PDF', 'EPUB', 'HTML', 'MOBI', 'AZW3', 'OTHER'];
+    const PLATFORMS_DL = ['AO3', 'WATTPAD', 'FFN', 'CUSTOM'];
+
+    const recordRows = records.length === 0
+      ? '<p style="color:var(--text-muted);font-size:12px;margin:0;">No downloads recorded yet.</p>'
+      : records.map(r => {
+          const dlUrl = r.sourceUrl || storyOriginalUrl;
+          const dlLink = dlUrl
+            ? `<a class="dl-again-link" href="${escA(dlUrl)}" target="_blank" rel="noopener noreferrer" title="Download Again">↗ Download Again</a>`
+            : '';
+          return `
+            <div class="detail-dl-row" data-dl-id="${r.id}">
+              <div class="dl-meta">
+                <span class="dl-chips">
+                  ${r.fileType ? `<span class="dl-chip">${esc(r.fileType)}</span>` : ''}
+                  ${r.platform ? `<span class="dl-chip dl-chip-platform">${esc(r.platform)}</span>` : ''}
+                </span>
+                ${r.fileName ? `<span class="dl-filename">${esc(r.fileName)}</span>` : ''}
+              </div>
+              <div class="dl-row-right">
+                <span class="dl-date">${r.downloadedAt ? r.downloadedAt.slice(0, 10) : ''}</span>
+                ${dlLink}
+                <button class="btn-icon dl-delete-btn" data-dl-id="${r.id}" title="Delete record">✕</button>
+              </div>
+            </div>`;
+        }).join('');
+
+    container.innerHTML = `
+      <hr class="modal-rule" />
+      <div class="history-section">
+        <div class="history-label-row">
+          <span class="history-label">Download History</span>
+          <button class="btn btn-ghost btn-sm" id="detail-dl-record-btn">+ Record Download</button>
+        </div>
+        <div id="detail-dl-list">${recordRows}</div>
+        <div id="detail-dl-form" class="detail-dl-form hidden">
+          <select class="filter-select detail-dl-input" id="dl-f-format">
+            <option value="">Format…</option>
+            ${FILE_FORMATS.map(f => `<option value="${f}">${f}</option>`).join('')}
+          </select>
+          <select class="filter-select detail-dl-input" id="dl-f-platform">
+            <option value="">Platform…</option>
+            ${PLATFORMS_DL.map(p => `<option value="${p}">${p}</option>`).join('')}
+          </select>
+          <input class="detail-dl-input" type="text" id="dl-f-url" placeholder="Source URL (optional)" />
+          <input class="detail-dl-input" type="text" id="dl-f-filename" placeholder="File name (optional)" />
+          <input class="detail-dl-input" type="text" id="dl-f-notes" placeholder="Notes (optional)" />
+          <div style="display:flex;gap:6px;margin-top:4px;">
+            <button class="btn btn-ghost btn-sm" id="dl-f-save-btn">Save</button>
+            <button class="btn btn-ghost btn-sm" id="dl-f-cancel-btn">Cancel</button>
+            <span id="dl-f-status" style="font-size:11px;color:var(--text-muted);display:none;"></span>
+          </div>
+        </div>
+      </div>`;
+
+    el('detail-dl-record-btn').addEventListener('click', () => {
+      el('detail-dl-form').classList.toggle('hidden');
+    });
+
+    el('detail-dl-cancel-btn').addEventListener('click', () => {
+      el('detail-dl-form').classList.add('hidden');
+    });
+
+    el('dl-f-save-btn').addEventListener('click', async () => {
+      const format   = el('dl-f-format').value   || null;
+      const platform = el('dl-f-platform').value || null;
+      const sourceUrl = el('dl-f-url').value.trim()      || null;
+      const fileName  = el('dl-f-filename').value.trim() || null;
+      const notes     = el('dl-f-notes').value.trim()    || null;
+      const saveBtn   = el('dl-f-save-btn');
+      const status    = el('dl-f-status');
+      saveBtn.disabled = true;
+      try {
+        const res = await fetch(`${API}/stories/${storyId}/downloads`, {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ fileType: format, platform, sourceUrl, fileName, notes }),
+        });
+        if (res.status === 401) { handleUnauthorized(); return; }
+        if (!res.ok) throw new Error();
+        el('detail-dl-form').classList.add('hidden');
+        await render();
+      } catch {
+        status.textContent = 'Error saving';
+        status.style.display = 'inline';
+      } finally {
+        saveBtn.disabled = false;
+      }
+    });
+
+    container.querySelectorAll('.dl-delete-btn').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        const dlId = btn.dataset.dlId;
+        await fetch(`${API}/stories/${storyId}/downloads/${dlId}`, {
+          method: 'DELETE', headers: { Authorization: `Bearer ${token}` },
+        });
+        await render();
+      });
+    });
+  };
+
+  await render();
+}
+
+function loadPersonalNote(storyId, currentNote) {
+  const container = el('detail-personal-note');
+  if (!container) return;
+
+  const render = (note) => {
+    container.innerHTML = `
+      <hr class="modal-rule" />
+      <div class="history-section">
+        <div class="history-label">My Note</div>
+        <textarea class="personal-note-area" id="detail-note-text" rows="3" placeholder="Add a personal note…">${esc(note || '')}</textarea>
+        <div style="margin-top:6px;display:flex;gap:8px;align-items:center;">
+          <button class="btn btn-ghost btn-sm" id="detail-note-save-btn">Save note</button>
+          <span class="history-meta" id="detail-note-status" style="display:none;"></span>
+        </div>
+      </div>`;
+
+    el('detail-note-save-btn').addEventListener('click', async () => {
+      const content = el('detail-note-text').value.trim() || null;
+      const saveBtn = el('detail-note-save-btn');
+      const status  = el('detail-note-status');
+      saveBtn.disabled = true;
+      try {
+        const res = await fetch(`${API}/stories/${storyId}/note`, {
+          method: 'PUT',
+          headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ content }),
+        });
+        if (res.status === 401) { handleUnauthorized(); return; }
+        const body = await res.json();
+        const updated = body.data;
+        const idx = allStories.findIndex(x => x.id === storyId);
+        if (idx !== -1) allStories[idx].personalNotes = updated.personalNotes;
+        status.textContent = 'Saved';
+        status.style.display = 'inline';
+        setTimeout(() => { status.style.display = 'none'; }, 2000);
+      } catch {
+        status.textContent = 'Error saving';
+        status.style.display = 'inline';
+      } finally {
+        saveBtn.disabled = false;
+      }
+    });
+  };
+
+  render(currentNote);
+}
+
+function loadDetailLabels(storyId, currentLabels) {
+  const container = el('detail-labels');
+  if (!container) return;
+
+  const render = (labels) => {
+    const currentChips = labels.length === 0
+      ? '<span style="color:var(--text-muted);font-size:13px;">No labels.</span>'
+      : labels.map(l => `
+          <span class="label-chip">
+            ${esc(l.name)}
+            <button class="label-chip-remove" data-label-id="${l.id}" data-story-id="${storyId}" title="Remove ${escA(l.name)}">✕</button>
+          </span>`).join('');
+
+    const available = allLabels.filter(al => !labels.some(l => l.id === al.id));
+    const addOptions = available.length === 0 ? '' : `
+      <div class="collections-add-row">
+        <select class="filter-select collections-add-sel" id="detail-label-add-sel">
+          <option value="">Add label…</option>
+          ${available.map(l => `<option value="${l.id}">${esc(l.name)}</option>`).join('')}
+        </select>
+        <button class="btn btn-ghost btn-sm" id="detail-label-add-btn">Add</button>
+      </div>`;
+
+    container.innerHTML = `
+      <hr class="modal-rule" />
+      <div class="history-section">
+        <div class="history-label">My Labels</div>
+        <div class="detail-labels-chips">${currentChips}</div>
+        ${addOptions}
+      </div>`;
+
+    container.querySelectorAll('.label-chip-remove').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        const labelId = btn.dataset.labelId;
+        btn.disabled = true;
+        try {
+          const res = await fetch(`${API}/labels/${labelId}/stories/${storyId}`, {
+            method: 'DELETE',
+            headers: { Authorization: `Bearer ${token}` },
+          });
+          if (res.status === 401) { handleUnauthorized(); return; }
+          const next = labels.filter(l => String(l.id) !== labelId);
+          const idx = allStories.findIndex(x => x.id === storyId);
+          if (idx !== -1) allStories[idx].labels = next;
+          render(next);
+        } catch { btn.disabled = false; }
+      });
+    });
+
+    const addBtn = el('detail-label-add-btn');
+    if (addBtn) {
+      addBtn.addEventListener('click', async () => {
+        const sel = el('detail-label-add-sel');
+        const labelId = sel?.value;
+        if (!labelId) return;
+        addBtn.disabled = true;
+        try {
+          const res = await fetch(`${API}/labels/${labelId}/stories/${storyId}`, {
+            method: 'POST',
+            headers: { Authorization: `Bearer ${token}` },
+          });
+          if (res.status === 401) { handleUnauthorized(); return; }
+          const added = allLabels.find(l => String(l.id) === labelId);
+          if (added) {
+            const next = [...labels, { id: added.id, name: added.name }];
+            const idx = allStories.findIndex(x => x.id === storyId);
+            if (idx !== -1) allStories[idx].labels = next;
+            render(next);
+          }
+        } catch { addBtn.disabled = false; }
+      });
+    }
+  };
+
+  render(currentLabels);
 }
 
 function loadDetailCollections(storyId, currentCollections) {
@@ -1253,7 +1523,7 @@ async function submitAdd(e) {
   const words    = el('f-words').value    ? Number(el('f-words').value)    : null;
   const chapters = el('f-chapters').value ? Number(el('f-chapters').value) : null;
   const tagInput = el('f-tags').value;
-  const tags     = tagInput.split(',').map(t => t.trim()).filter(Boolean);
+  const tags     = tagInput.split(',').map(tag => tag.trim()).filter(Boolean);
   const rs       = el('f-reading-status').value || null;
   const curCh    = el('f-current-chapter').value ? Number(el('f-current-chapter').value) : null;
   const curUrl   = el('f-current-chapter-url').value.trim() || null;
@@ -1299,9 +1569,6 @@ async function submitAdd(e) {
 // ─── Events ───────────────────────────────────────────────────────────────────
 
 function bindEvents() {
-  el('login-btn').addEventListener('click', login);
-  el('login-password').addEventListener('keydown', e => { if (e.key === 'Enter') login(); });
-
   el('show-register-btn').addEventListener('click', showRegisterMode);
   el('show-login-btn').addEventListener('click', showLoginMode);
   el('register-btn').addEventListener('click', register);
@@ -1368,6 +1635,7 @@ function bindEvents() {
   el('collection-form').addEventListener('submit', submitCollectionForm);
   el('collection-cancel-btn').addEventListener('click', resetCollectionForm);
   el('filter-collection').addEventListener('change', applyFilters);
+  el('filter-label').addEventListener('change', applyFilters);
 
   el('accounts-modal-close').addEventListener('click', closeAccountsModal);
   el('accounts-modal').addEventListener('click', e => { if (e.target === e.currentTarget) closeAccountsModal(); });
@@ -1427,7 +1695,11 @@ const KUDOS_LABELS = {
 function el(id) { return document.getElementById(id); }
 
 function usernameFromToken() {
-  try { return JSON.parse(atob(token.split('.')[1])).sub || ''; } catch { return ''; }
+  try {
+    const b64 = token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/');
+    const padded = b64 + '='.repeat((4 - b64.length % 4) % 4);
+    return JSON.parse(atob(padded)).sub || '';
+  } catch { return ''; }
 }
 
 function esc(s) {
@@ -1485,6 +1757,7 @@ function openVault() {
     dataLoaded = true;
     fetchStories();
     fetchCollections();
+    fetchLabels();
   }
 }
 
@@ -1539,6 +1812,7 @@ function navigateTo(view) {
   if (view === 'collections') renderCollectionsPage();
   if (view === 'downloads')   renderDownloadsPage();
   if (view === 'statistics')  renderStatisticsPage();
+  if (view === 'timeline')    renderTimelinePage();
   if (view === 'import')      renderImportPage();
   if (view === 'accounts')    renderAccountsPage();
   if (view === 'settings')    updateSettingsPage();
@@ -1582,64 +1856,407 @@ const IMPORT_TYPES = [
     desc: 'Import favorites and followed stories from FanFiction.net.' },
 ];
 
+const JOB_STATUS_LABELS = {
+  PENDING: 'Queued', RUNNING: 'Running', PAUSED: 'Paused',
+  COMPLETED: 'Done', FAILED: 'Failed', CANCELLED: 'Cancelled',
+};
+
+const AO3_IMPORT_TYPES = ['HISTORY', 'BOOKMARKS', 'SUBSCRIPTIONS'];
+
 async function renderImportPage() {
   const container = el('import-page-body');
   if (!container) return;
 
-  const statusMap = { PENDING: 'Queued', RUNNING: 'Running', COMPLETED: 'Done',
-                      FAILED: 'Failed', CANCELLED: 'Cancelled' };
-
-  let jobsHtml = '';
+  let jobs = [];
   try {
     const res = await fetch(`${API}/imports`, { headers: { Authorization: `Bearer ${token}` } });
     if (res.status === 401) { handleUnauthorized(); return; }
     const body = await res.json();
-    const jobs = body.data || [];
-    if (jobs.length === 0) {
-      jobsHtml = '<p class="stat-empty">No imports have been run yet.</p>';
-    } else {
-      jobsHtml = `<ul class="import-job-list">${jobs.map(j => `
-        <li class="import-job-row">
-          <span class="import-job-label">${esc(j.platform)} — ${esc(j.importType.replace(/_/g,' '))}</span>
-          <span class="import-job-status import-job-status-${j.status.toLowerCase()}">${statusMap[j.status] || j.status}</span>
-          <span class="import-job-count">${j.itemsProcessed > 0 ? j.itemsProcessed + ' items' : ''}</span>
-          <span class="import-job-date">${j.createdAt ? j.createdAt.slice(0,10) : ''}</span>
-        </li>`).join('')}</ul>`;
-    }
-  } catch {
-    jobsHtml = '<p class="stat-empty">Could not load import history.</p>';
-  }
+    jobs = body.data || [];
+  } catch { /* leave jobs empty */ }
 
-  container.innerHTML = `
-    <p class="import-intro">Imports use connected accounts or extension-assisted syncing when available. Select an import type below to queue a job when support is ready.</p>
+  // Find most-recent job per (platform, importType)
+  const latestJob = (platform, importType) =>
+    jobs.find(j => j.platform === platform && j.importType === importType) || null;
 
-    <div class="import-cards">
-      ${IMPORT_TYPES.map(t => `
+  const renderCard = (importType) => {
+    const live = importType.platform === 'AO3' && AO3_IMPORT_TYPES.includes(importType.importType);
+    const job  = live ? latestJob(importType.platform, importType.importType) : null;
+    const status = job ? job.status : null;
+
+    const progressBar = job && job.totalPages
+      ? `<div class="import-progress-bar"><div class="import-progress-fill" style="width:${Math.min(100, Math.round(job.currentPage / job.totalPages * 100))}%"></div></div>`
+      : '';
+
+    const meta = job ? `
+      <div class="import-card-meta">
+        <span class="import-job-status import-job-status-${job.status.toLowerCase()}">${JOB_STATUS_LABELS[job.status] || job.status}</span>
+        ${job.itemsProcessed > 0 ? `<span class="import-card-count">${job.itemsProcessed} items</span>` : ''}
+        ${job.currentPage > 0 ? `<span class="import-card-count">page ${job.currentPage}${job.totalPages ? '/' + job.totalPages : ''}</span>` : ''}
+        ${job.createdAt ? `<span class="import-card-date">${job.createdAt.slice(0, 10)}</span>` : ''}
+      </div>
+      ${progressBar}` : '';
+
+    if (!live) {
+      return `
         <div class="import-card">
           <div class="import-card-body">
-            <p class="import-card-title">${esc(t.label)}</p>
-            <p class="import-card-desc">${esc(t.desc)}</p>
+            <p class="import-card-title">${esc(importType.label)}</p>
+            <p class="import-card-desc">${esc(importType.desc)}</p>
           </div>
           <div class="import-card-foot">
             <span class="import-coming-badge">Coming soon</span>
-            <button class="btn btn-sm import-trigger-btn" disabled
-              data-platform="${escA(t.platform)}" data-type="${escA(t.importType)}">
-              Import ${esc(t.label)}
-            </button>
           </div>
-        </div>`).join('')}
-    </div>
+        </div>`;
+    }
 
+    const canStart  = !job || status === 'COMPLETED' || status === 'FAILED' || status === 'CANCELLED';
+    const canPause  = status === 'RUNNING';
+    const canResume = status === 'PAUSED';
+    const canCancel = status === 'PENDING' || status === 'RUNNING' || status === 'PAUSED';
+
+    return `
+      <div class="import-card" data-platform="${escA(importType.platform)}" data-type="${escA(importType.importType)}" data-job-id="${job ? job.id : ''}">
+        <div class="import-card-body">
+          <p class="import-card-title">${esc(importType.label)}</p>
+          <p class="import-card-desc">${esc(importType.desc)}</p>
+          ${meta}
+        </div>
+        <div class="import-card-foot">
+          ${canStart  ? `<button class="btn btn-sm import-btn-start">Start Import</button>`  : ''}
+          ${canPause  ? `<button class="btn btn-sm import-btn-pause">Pause</button>`          : ''}
+          ${canResume ? `<button class="btn btn-sm import-btn-resume">Resume</button>`        : ''}
+          ${canCancel ? `<button class="btn btn-ghost btn-sm import-btn-cancel">Cancel</button>` : ''}
+        </div>
+      </div>`;
+  };
+
+  const historyRows = jobs.length === 0
+    ? '<p class="stat-empty">No imports have been run yet.</p>'
+    : `<ul class="import-job-list">${jobs.map(j => `
+        <li class="import-job-row">
+          <span class="import-job-label">${esc(j.platform)} — ${esc(j.importType.replace(/_/g,' '))}</span>
+          <span class="import-job-status import-job-status-${j.status.toLowerCase()}">${JOB_STATUS_LABELS[j.status] || j.status}</span>
+          <span class="import-job-count">${j.itemsProcessed > 0 ? j.itemsProcessed + ' items' : ''}</span>
+          <span class="import-job-date">${j.createdAt ? j.createdAt.slice(0,10) : ''}</span>
+        </li>`).join('')}</ul>`;
+
+  container.innerHTML = `
+    <p class="import-intro">AO3 imports run through the StoryVault browser extension while you are logged into AO3. Wattpad and FFN support coming soon.</p>
+    <div class="import-cards">
+      ${IMPORT_TYPES.map(renderCard).join('')}
+    </div>
     <div class="import-history-section">
       <h3 class="stat-panel-title">Import history</h3>
-      ${jobsHtml}
+      ${historyRows}
     </div>`;
+
+  // Wire card buttons
+  container.querySelectorAll('.import-card[data-platform]').forEach(card => {
+    const platform = card.dataset.platform;
+    const importType = card.dataset.type;
+    const jobId = card.dataset.jobId ? Number(card.dataset.jobId) : null;
+
+    const doAction = async (action, bodyStr = null) => {
+      try {
+        const opts = { method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' } };
+        if (bodyStr) opts.body = bodyStr;
+        const res = await fetch(`${API}/imports${action}`, opts);
+        if (res.status === 401) { handleUnauthorized(); return; }
+        await renderImportPage();
+      } catch { /* silently retry on next render */ }
+    };
+
+    card.querySelector('.import-btn-start')?.addEventListener('click', async () => {
+      // Create a new job then start it
+      const createRes = await fetch(`${API}/imports`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ platform, importType }),
+      });
+      if (!createRes.ok) return;
+      const newJob = (await createRes.json()).data;
+      await doAction(`/${newJob.id}/start`);
+    });
+
+    card.querySelector('.import-btn-pause')?.addEventListener('click',  () => doAction(`/${jobId}/pause`));
+    card.querySelector('.import-btn-resume')?.addEventListener('click', () => doAction(`/${jobId}/resume`));
+    card.querySelector('.import-btn-cancel')?.addEventListener('click', () => doAction(`/${jobId}/cancel`));
+  });
+}
+
+// ── Timeline ──────────────────────────────────────────────────────────────────
+
+const TIMELINE_ICONS = {
+  STORY_FIRST_SEEN: '✦', STORY_REVISITED: '↩', CHAPTER_PROGRESS_UPDATED: '📖',
+  READING_STATUS_CHANGED: '⇄', KUDOS_GIVEN: '♥', COLLECTION_ADDED: '📂',
+  COLLECTION_REMOVED: '✂', NOTE_ADDED: '✏', NOTE_EDITED: '✏',
+  PERSONAL_LABEL_ADDED: '🏷', DOWNLOAD_RECORDED: '⬇', IMPORT_COMPLETED: '⬆',
+};
+
+const TIMELINE_LABELS = {
+  STORY_FIRST_SEEN: 'Added to vault', STORY_REVISITED: 'Revisited',
+  CHAPTER_PROGRESS_UPDATED: 'Progress updated', READING_STATUS_CHANGED: 'Status changed',
+  KUDOS_GIVEN: 'Left kudos', COLLECTION_ADDED: 'Added to collection',
+  COLLECTION_REMOVED: 'Removed from collection', NOTE_ADDED: 'Note added',
+  NOTE_EDITED: 'Note edited', PERSONAL_LABEL_ADDED: 'Label added',
+  DOWNLOAD_RECORDED: 'Downloaded', IMPORT_COMPLETED: 'Import completed',
+};
+
+let timelineState = { page: 0, size: 50, totalPages: 1, filter: {}, loading: false };
+
+async function renderTimelinePage() {
+  const container = el('timeline-page-body');
+  if (!container) return;
+  container.innerHTML = `<p class="loading-state" style="padding:12px 0;">${t('ui.loading')}</p>`;
+
+  const now = new Date();
+  const defaultFrom = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().slice(0, 10);
+  const defaultTo   = now.toISOString().slice(0, 10);
+
+  timelineState = { page: 0, size: 50, totalPages: 1,
+    filter: { fromDate: defaultFrom, toDate: defaultTo }, loading: false };
+
+  container.innerHTML = `
+    <div class="timeline-stats-row" id="tl-stats-row">
+      <div class="timeline-stat-card"><div class="timeline-stat-label">Works opened</div><div class="timeline-stat-value" id="tl-stat-opened">—</div></div>
+      <div class="timeline-stat-card"><div class="timeline-stat-label">Kudos given</div><div class="timeline-stat-value" id="tl-stat-kudos">—</div></div>
+      <div class="timeline-stat-card"><div class="timeline-stat-label">Notes written</div><div class="timeline-stat-value" id="tl-stat-notes">—</div></div>
+      <div class="timeline-stat-card"><div class="timeline-stat-label">Collections</div><div class="timeline-stat-value" id="tl-stat-colls">—</div></div>
+      <div class="timeline-stat-card"><div class="timeline-stat-label">Words archived</div><div class="timeline-stat-value" id="tl-stat-words">—</div></div>
+    </div>
+
+    <div class="timeline-filters">
+      <div class="timeline-filter-group">
+        <span class="timeline-filter-label">From</span>
+        <input type="date" id="tl-from" class="filter-select" value="${defaultFrom}">
+      </div>
+      <div class="timeline-filter-group">
+        <span class="timeline-filter-label">To</span>
+        <input type="date" id="tl-to" class="filter-select" value="${defaultTo}">
+      </div>
+      <div class="timeline-filter-group">
+        <span class="timeline-filter-label">Event type</span>
+        <select id="tl-type" class="filter-select">
+          <option value="">All events</option>
+          <option value="STORY_FIRST_SEEN">Added to vault</option>
+          <option value="STORY_REVISITED">Revisited</option>
+          <option value="CHAPTER_PROGRESS_UPDATED">Progress updated</option>
+          <option value="READING_STATUS_CHANGED">Status changed</option>
+          <option value="KUDOS_GIVEN">Kudos given</option>
+          <option value="COLLECTION_ADDED">Collection added</option>
+          <option value="COLLECTION_REMOVED">Collection removed</option>
+          <option value="NOTE_ADDED">Note added</option>
+          <option value="NOTE_EDITED">Note edited</option>
+          <option value="PERSONAL_LABEL_ADDED">Label added</option>
+          <option value="DOWNLOAD_RECORDED">Downloaded</option>
+        </select>
+      </div>
+      <div class="timeline-filter-group">
+        <span class="timeline-filter-label">Search</span>
+        <input type="text" id="tl-search" class="filter-select" placeholder="Story title, note…" style="min-width:160px;">
+      </div>
+      <div class="timeline-filter-group" style="justify-content:flex-end;">
+        <span class="timeline-filter-label">&nbsp;</span>
+        <button class="btn btn-primary btn-sm" id="tl-apply-btn">Apply</button>
+      </div>
+    </div>
+
+    <div class="timeline-jump-row">
+      <span style="font-size:12px;color:var(--text-muted);">Jump to:</span>
+      <select id="tl-jump-month" class="filter-select">
+        ${['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
+            .map((m, i) => `<option value="${i}"${i === now.getMonth() ? ' selected' : ''}>${m}</option>`).join('')}
+      </select>
+      <select id="tl-jump-year" class="filter-select">
+        ${Array.from({length: 10}, (_, i) => now.getFullYear() - i)
+            .map(y => `<option value="${y}"${y === now.getFullYear() ? ' selected' : ''}>${y}</option>`).join('')}
+      </select>
+      <button class="btn btn-ghost btn-sm" id="tl-jump-btn">Go</button>
+    </div>
+
+    <div id="tl-events-container"></div>
+    <div class="timeline-load-more" id="tl-load-more" style="display:none;">
+      <button class="btn btn-ghost" id="tl-more-btn">Load more</button>
+    </div>`;
+
+  el('tl-apply-btn').addEventListener('click', () => {
+    timelineState.page = 0;
+    timelineState.filter = buildTimelineFilter();
+    loadTimelineEvents(true);
+    loadTimelineStats();
+  });
+
+  el('tl-jump-btn').addEventListener('click', () => {
+    const month = parseInt(el('tl-jump-month').value);
+    const year  = parseInt(el('tl-jump-year').value);
+    const from  = new Date(year, month, 1).toISOString().slice(0, 10);
+    const to    = new Date(year, month + 1, 0).toISOString().slice(0, 10);
+    el('tl-from').value = from;
+    el('tl-to').value   = to;
+    timelineState.page = 0;
+    timelineState.filter = buildTimelineFilter();
+    loadTimelineEvents(true);
+    loadTimelineStats();
+  });
+
+  el('tl-more-btn')?.addEventListener('click', () => {
+    timelineState.page++;
+    loadTimelineEvents(false);
+  });
+
+  timelineState.filter = buildTimelineFilter();
+  await Promise.all([loadTimelineEvents(true), loadTimelineStats()]);
+}
+
+function buildTimelineFilter() {
+  const type = el('tl-type')?.value;
+  return {
+    fromDate: el('tl-from')?.value || null,
+    toDate:   el('tl-to')?.value   || null,
+    eventTypes: type ? [type] : [],
+    search: el('tl-search')?.value?.trim() || null,
+    page: 0,
+    size: timelineState.size,
+  };
+}
+
+async function loadTimelineEvents(replace) {
+  if (timelineState.loading) return;
+  timelineState.loading = true;
+  const container = el('tl-events-container');
+  if (!container) { timelineState.loading = false; return; }
+  if (replace) container.innerHTML = `<p class="loading-state">${t('ui.loading')}</p>`;
+
+  try {
+    const body = { ...timelineState.filter, page: timelineState.page, size: timelineState.size };
+    const res = await fetch(`${API}/timeline`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    if (res.status === 401) { handleUnauthorized(); return; }
+    const json = await res.json();
+    const data = json.data;
+    const events = data.content || [];
+    timelineState.totalPages = data.totalPages || 1;
+
+    if (replace) container.innerHTML = '';
+    if (events.length === 0 && replace) {
+      container.innerHTML = '<p class="page-empty-note">No events found.</p>';
+      el('tl-load-more').style.display = 'none';
+      return;
+    }
+
+    const grouped = groupByDay(events);
+    let lastMonth = null;
+    const frag = document.createDocumentFragment();
+    for (const [day, dayEvents] of grouped) {
+      const dayDate = new Date(day + 'T00:00:00');
+      const monthKey = dayDate.getFullYear() + '-' + String(dayDate.getMonth() + 1).padStart(2, '0');
+      if (monthKey !== lastMonth) {
+        lastMonth = monthKey;
+        const mh = document.createElement('div');
+        mh.className = 'timeline-month-header';
+        mh.textContent = dayDate.toLocaleString('default', { month: 'long', year: 'numeric' });
+        frag.appendChild(mh);
+      }
+      const group = document.createElement('div');
+      group.className = 'timeline-day-group';
+      const dh = document.createElement('div');
+      dh.className = 'timeline-day-header';
+      dh.textContent = dayDate.toLocaleDateString('default', { weekday: 'long', month: 'long', day: 'numeric' });
+      group.appendChild(dh);
+      dayEvents.forEach(ev => group.appendChild(renderTimelineEvent(ev)));
+      frag.appendChild(group);
+    }
+    container.appendChild(frag);
+
+    const hasMore = timelineState.page < timelineState.totalPages - 1;
+    el('tl-load-more').style.display = hasMore ? 'block' : 'none';
+  } catch {
+    if (replace) container.innerHTML = '<p class="page-empty-note">Could not load timeline.</p>';
+  } finally {
+    timelineState.loading = false;
+  }
+}
+
+function groupByDay(events) {
+  const map = new Map();
+  events.forEach(ev => {
+    const day = ev.eventTimestamp.slice(0, 10);
+    if (!map.has(day)) map.set(day, []);
+    map.get(day).push(ev);
+  });
+  return map;
+}
+
+function renderTimelineEvent(ev) {
+  const div = document.createElement('div');
+  div.className = 'timeline-event';
+  const icon  = TIMELINE_ICONS[ev.eventType] || '·';
+  const label = TIMELINE_LABELS[ev.eventType] || ev.eventType.replace(/_/g, ' ');
+  const time  = ev.eventTimestamp ? ev.eventTimestamp.slice(11, 16) : '';
+  const title = ev.storyTitle ? esc(ev.storyTitle) : '';
+  const detail = buildEventDetail(ev);
+  div.innerHTML = `
+    <span class="timeline-event-icon">${icon}</span>
+    <div class="timeline-event-body">
+      <div class="timeline-event-title">${title ? title + ' — ' : ''}<span style="color:var(--text-muted);font-weight:400;">${esc(label)}</span></div>
+      ${detail ? `<div class="timeline-event-detail">${detail}</div>` : ''}
+    </div>
+    <span class="timeline-event-time">${time}</span>`;
+  return div;
+}
+
+function buildEventDetail(ev) {
+  try {
+    const m = ev.metadata ? JSON.parse(ev.metadata) : {};
+    switch (ev.eventType) {
+      case 'CHAPTER_PROGRESS_UPDATED':
+        return m.from != null ? `Chapter ${m.from} → ${m.to}` : '';
+      case 'READING_STATUS_CHANGED':
+        return m.from && m.to ? `${m.from.replace(/_/g, ' ')} → ${m.to.replace(/_/g, ' ')}` : '';
+      case 'COLLECTION_ADDED': case 'COLLECTION_REMOVED':
+        return m.collectionName ? esc(m.collectionName) : '';
+      case 'NOTE_ADDED': case 'NOTE_EDITED':
+        return m.preview ? `"${esc(m.preview.slice(0, 80))}"` : '';
+      case 'PERSONAL_LABEL_ADDED':
+        return m.labelName ? esc(m.labelName) : '';
+      case 'STORY_FIRST_SEEN': case 'STORY_REVISITED':
+        return m.fandom ? esc(m.fandom) : '';
+      default: return '';
+    }
+  } catch { return ''; }
+}
+
+async function loadTimelineStats() {
+  const from = el('tl-from')?.value;
+  const to   = el('tl-to')?.value;
+  const params = new URLSearchParams();
+  if (from) params.append('from', from);
+  if (to)   params.append('to', to);
+  try {
+    const res = await fetch(`${API}/timeline/stats?${params}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (!res.ok) return;
+    const json = await res.json();
+    const d = json.data;
+    const fmt = n => (n ?? 0).toLocaleString();
+    const setVal = (id, val) => { const el2 = el(id); if (el2) el2.textContent = val; };
+    setVal('tl-stat-opened', fmt(d.worksOpened));
+    setVal('tl-stat-kudos',  fmt(d.kudosGiven));
+    setVal('tl-stat-notes',  fmt(d.notesWritten));
+    setVal('tl-stat-colls',  fmt(d.collectionsCreated));
+    setVal('tl-stat-words',  fmt(d.totalWordsArchived));
+  } catch {}
 }
 
 async function renderStatisticsPage() {
   const container = el('stats-page-body');
   if (!container) return;
-  container.innerHTML = '<p class="loading-state" style="padding:12px 0;">Loading…</p>';
+  container.innerHTML = `<p class="loading-state" style="padding:12px 0;">${t('ui.loading')}</p>`;
   try {
     const res = await fetch(`${API}/stats`, { headers: { Authorization: `Bearer ${token}` } });
     if (res.status === 401) { handleUnauthorized(); return; }
@@ -1707,6 +2324,14 @@ async function renderStatisticsPage() {
           <p class="stat-card-label">Connected accounts</p>
           <p class="stat-card-value">${fmt(d.connectedAccountsCount)}</p>
         </div>
+        <div class="stat-card">
+          <p class="stat-card-label">With my notes</p>
+          <p class="stat-card-value">${fmt(d.storiesWithNotes)}</p>
+        </div>
+        <div class="stat-card">
+          <p class="stat-card-label">With labels</p>
+          <p class="stat-card-value">${fmt(d.labeledStoriesCount)}</p>
+        </div>
 
         <div class="stat-panel stat-panel-half">
           <h3 class="stat-panel-title">Works by official status</h3>
@@ -1743,6 +2368,12 @@ async function renderStatisticsPage() {
           ${accessList(d.recentlyAccessedStories, false)}
         </div>
 
+        ${d.topLabels && d.topLabels.length > 0 ? `
+        <div class="stat-panel stat-panel-half">
+          <h3 class="stat-panel-title">Top personal labels</h3>
+          ${topList(d.topLabels, 'No labels yet')}
+        </div>` : ''}
+
       </div>`;
   } catch {
     container.innerHTML = '<p class="page-empty-note">Could not load statistics.</p>';
@@ -1752,41 +2383,110 @@ async function renderStatisticsPage() {
 async function renderDownloadsPage() {
   const container = el('downloads-page-body');
   if (!container) return;
-  container.innerHTML = '<p class="loading-state" style="padding:12px 0;">Loading…</p>';
+  container.innerHTML = `<p class="loading-state" style="padding:12px 0;">${t('ui.loading')}</p>`;
+
+  let allRecords = [];
   try {
     const res = await fetch(`${API}/downloads`, { headers: { Authorization: `Bearer ${token}` } });
     if (res.status === 401) { handleUnauthorized(); return; }
     const body = await res.json();
-    const records = body.data || [];
-    if (records.length === 0) {
-      container.innerHTML = `
+    allRecords = body.data || [];
+  } catch {
+    container.innerHTML = '<p class="page-empty-note">Could not load downloads.</p>';
+    return;
+  }
+
+  const FILE_FORMATS = ['PDF', 'EPUB', 'HTML', 'MOBI', 'AZW3', 'OTHER'];
+  const PLATFORMS_DL = ['AO3', 'WATTPAD', 'FFN', 'CUSTOM'];
+
+  const filterBar = `
+    <div class="dl-filter-bar">
+      <select class="filter-select" id="dl-filter-format">
+        <option value="">All formats</option>
+        ${FILE_FORMATS.map(f => `<option value="${f}">${f}</option>`).join('')}
+      </select>
+      <select class="filter-select" id="dl-filter-platform">
+        <option value="">All platforms</option>
+        ${PLATFORMS_DL.map(p => `<option value="${p}">${p}</option>`).join('')}
+      </select>
+      <input class="filter-input" type="date" id="dl-filter-from" title="Downloaded from" />
+      <input class="filter-input" type="date" id="dl-filter-to"   title="Downloaded to" />
+      <input class="filter-input" type="text" id="dl-filter-fandom" placeholder="Fandom…" style="flex:1;min-width:100px;" />
+      <button class="btn btn-ghost btn-sm" id="dl-filter-clear">Clear</button>
+    </div>`;
+
+  container.innerHTML = filterBar + '<div id="dl-record-list"></div>';
+
+  const renderList = () => {
+    const fmt      = el('dl-filter-format').value;
+    const platform = el('dl-filter-platform').value;
+    const fromStr  = el('dl-filter-from').value;
+    const toStr    = el('dl-filter-to').value;
+    const fandom   = el('dl-filter-fandom').value.trim().toLowerCase();
+
+    const filtered = allRecords.filter(r => {
+      if (fmt && r.fileType !== fmt) return false;
+      if (platform && r.platform !== platform) return false;
+      if (fromStr && r.downloadedAt && r.downloadedAt.slice(0, 10) < fromStr) return false;
+      if (toStr   && r.downloadedAt && r.downloadedAt.slice(0, 10) > toStr)   return false;
+      if (fandom  && !(r.storyFandom || '').toLowerCase().includes(fandom))    return false;
+      return true;
+    });
+
+    const listEl = el('dl-record-list');
+    if (filtered.length === 0) {
+      listEl.innerHTML = `
         <div class="placeholder-body">
           <div class="placeholder-gem" aria-hidden="true">◇</div>
-          <p class="placeholder-note">No downloads saved yet.</p>
-          <p class="placeholder-note" style="margin-top:4px;opacity:.6;">Future downloads will appear here.</p>
+          <p class="placeholder-note">${allRecords.length === 0 ? 'No downloads saved yet.' : 'No downloads match the filters.'}</p>
         </div>`;
       return;
     }
-    container.innerHTML = records.map(r => `
-      <div class="download-record-row">
-        <div class="dl-meta">
-          <span class="dl-title">${esc(r.storyTitle || 'Untitled')}</span>
-          <span class="dl-chips">
-            <span class="dl-chip">${esc(r.fileType || '')}</span>
-            <span class="dl-chip dl-chip-platform">${esc(r.platform || '')}</span>
-          </span>
-        </div>
-        <span class="dl-date">${r.downloadedAt ? r.downloadedAt.slice(0, 10) : ''}</span>
-      </div>`).join('');
-  } catch {
-    container.innerHTML = '<p class="page-empty-note">Could not load downloads.</p>';
-  }
+
+    listEl.innerHTML = filtered.map(r => {
+      const dlUrl = r.sourceUrl || r.storyOriginalUrl;
+      const dlLink = dlUrl
+        ? `<a class="dl-again-link" href="${escA(dlUrl)}" target="_blank" rel="noopener noreferrer">↗ Download Again</a>`
+        : '';
+      return `
+        <div class="download-record-row">
+          <div class="dl-meta">
+            <span class="dl-title">${esc(r.storyTitle || 'Untitled')}</span>
+            ${r.storyFandom || r.storyAuthor
+              ? `<span class="dl-sub">${[r.storyFandom, r.storyAuthor].filter(Boolean).map(esc).join(' · ')}</span>`
+              : ''}
+            <span class="dl-chips">
+              ${r.fileType  ? `<span class="dl-chip">${esc(r.fileType)}</span>` : ''}
+              ${r.platform  ? `<span class="dl-chip dl-chip-platform">${esc(r.platform)}</span>` : ''}
+            </span>
+          </div>
+          <div class="dl-row-right">
+            <span class="dl-date">${r.downloadedAt ? r.downloadedAt.slice(0, 10) : ''}</span>
+            ${dlLink}
+          </div>
+        </div>`;
+    }).join('');
+  };
+
+  renderList();
+
+  ['dl-filter-format', 'dl-filter-platform', 'dl-filter-from', 'dl-filter-to', 'dl-filter-fandom']
+    .forEach(id => el(id)?.addEventListener('change', renderList));
+  el('dl-filter-fandom')?.addEventListener('input', renderList);
+  el('dl-filter-clear')?.addEventListener('click', () => {
+    el('dl-filter-format').value   = '';
+    el('dl-filter-platform').value = '';
+    el('dl-filter-from').value     = '';
+    el('dl-filter-to').value       = '';
+    el('dl-filter-fandom').value   = '';
+    renderList();
+  });
 }
 
 async function renderAccountsPage() {
   const container = el('page-accounts-list');
   if (!container) return;
-  container.innerHTML = '<p class="loading-state" style="padding:12px 0;">Loading…</p>';
+  container.innerHTML = `<p class="loading-state" style="padding:12px 0;">${t('ui.loading')}</p>`;
   try {
     const res = await fetch(`${API}/accounts`, { headers: { Authorization: `Bearer ${token}` } });
     if (res.status === 401) { handleUnauthorized(); return; }
@@ -1799,7 +2499,7 @@ async function renderAccountsPage() {
     container.innerHTML = accounts.map(a => `
       <div class="account-row">
         <div class="account-row-info">
-          <span class="platform-badge">${ACCOUNT_PLATFORM_LABELS[a.platform] || a.platform}</span>
+          <span class="platform-badge">${t('platform.' + a.platform) || a.platform}</span>
           <span class="account-display-name">${esc(a.displayName)}</span>
           ${a.accountLabel ? `<span class="account-label-chip">${esc(a.accountLabel)}</span>` : ''}
           ${!a.syncEnabled ? '<span class="account-sync-off">sync off</span>' : ''}
@@ -1822,14 +2522,33 @@ function syncToggle(btnId, statusId, isOn, label) {
 function updateSettingsPage() {
   const theme   = document.documentElement.dataset.theme   || 'light';
   const density = document.documentElement.dataset.density || 'minimal';
-  syncToggle('settings-theme-btn',          'settings-theme-status',          theme === 'dark',      theme === 'dark' ? 'Dark' : 'Light');
-  syncToggle('settings-density-btn',        'settings-density-status',        density === 'maximal', density === 'maximal' ? 'Compact' : 'Comfortable');
-  syncToggle('settings-privacy-btn',        'settings-privacy-status',        privacyMode,   privacyMode   ? 'On' : 'Off');
-  syncToggle('settings-remember-vault-btn', 'settings-remember-vault-status', rememberVault, rememberVault ? 'On' : 'Off');
-  syncToggle('settings-auto-log-btn',       'settings-auto-log-status',       autoLog,       autoLog       ? 'On' : 'Off');
-  syncToggle('settings-show-toast-btn',     'settings-show-toast-status',     showToast,     showToast     ? 'On' : 'Off');
-  syncToggle('settings-show-kudos-btn',     'settings-show-kudos-status',     showKudos,     showKudos     ? 'On' : 'Off');
-  syncToggle('settings-show-chips-btn',     'settings-show-chips-status',     showChips,     showChips     ? 'On' : 'Off');
+  syncToggle('settings-theme-btn',          'settings-theme-status',          theme === 'dark',      theme === 'dark' ? t('settings.theme.dark') : t('settings.theme.light'));
+  syncToggle('settings-density-btn',        'settings-density-status',        density === 'maximal', density === 'maximal' ? t('settings.theme.compact') : t('settings.theme.comfortable'));
+  syncToggle('settings-privacy-btn',        'settings-privacy-status',        privacyMode,   privacyMode   ? t('ui.on') : t('ui.off'));
+  syncToggle('settings-remember-vault-btn', 'settings-remember-vault-status', rememberVault, rememberVault ? t('ui.on') : t('ui.off'));
+  syncToggle('settings-auto-log-btn',       'settings-auto-log-status',       autoLog,       autoLog       ? t('ui.on') : t('ui.off'));
+  syncToggle('settings-show-toast-btn',     'settings-show-toast-status',     showToast,     showToast     ? t('ui.on') : t('ui.off'));
+  syncToggle('settings-show-kudos-btn',     'settings-show-kudos-status',     showKudos,     showKudos     ? t('ui.on') : t('ui.off'));
+  syncToggle('settings-show-chips-btn',     'settings-show-chips-status',     showChips,     showChips     ? t('ui.on') : t('ui.off'));
+  renderLangSelector();
+}
+
+function renderLangSelector() {
+  const grid = el('lang-selector');
+  if (!grid) return;
+  const current = i18n.getLang();
+  grid.innerHTML = Object.entries(i18n.SUPPORTED_LANGS).map(([code, info]) => `
+    <button class="lang-btn${code === current ? ' lang-btn-active' : ''}${!info.available ? ' lang-btn-unavailable' : ''}"
+      data-lang="${code}" ${!info.available ? 'disabled title="Coming soon"' : ''}>
+      ${esc(info.label)}
+    </button>`).join('');
+  grid.querySelectorAll('.lang-btn:not([disabled])').forEach(btn => {
+    btn.addEventListener('click', () => {
+      i18n.setLang(btn.dataset.lang);
+      renderLangSelector();
+      updateSettingsPage();
+    });
+  });
 }
 
 // ─── Connected Accounts ───────────────────────────────────────────────────────
@@ -1850,7 +2569,7 @@ function closeAccountsModal() {
 
 async function renderAccountsList() {
   const container = el('accounts-list');
-  container.innerHTML = '<p class="loading-state" style="padding:12px 0;">Loading…</p>';
+  container.innerHTML = `<p class="loading-state" style="padding:12px 0;">${t('ui.loading')}</p>`;
   try {
     const res = await fetch(`${API}/accounts`, {
       headers: { Authorization: `Bearer ${token}` },
@@ -1865,7 +2584,7 @@ async function renderAccountsList() {
     container.innerHTML = accounts.map(a => `
       <div class="account-row" data-id="${a.id}">
         <div class="account-row-info">
-          <span class="platform-badge">${ACCOUNT_PLATFORM_LABELS[a.platform] || a.platform}</span>
+          <span class="platform-badge">${t('platform.' + a.platform) || a.platform}</span>
           <span class="account-display-name">${esc(a.displayName)}</span>
           ${a.accountLabel ? `<span class="account-label-chip">${esc(a.accountLabel)}</span>` : ''}
           ${!a.syncEnabled ? '<span class="account-sync-off">sync off</span>' : ''}

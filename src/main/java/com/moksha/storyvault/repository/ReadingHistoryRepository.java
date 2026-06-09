@@ -10,6 +10,7 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
 
@@ -19,6 +20,12 @@ public interface ReadingHistoryRepository extends JpaRepository<ReadingHistory, 
     List<ReadingHistory> findByStoryOrderByAccessedAtDesc(Story story);
 
     Optional<ReadingHistory> findTopByStoryOrderByAccessedAtDesc(Story story);
+
+    boolean existsByStoryAndEventTypeAndAccessedAtBetween(
+            Story story, String eventType, LocalDateTime from, LocalDateTime to);
+
+    Optional<ReadingHistory> findTopByStoryAndEventTypeOrderByAccessedAtDesc(
+            Story story, String eventType);
 
     @Query("""
         SELECT new com.moksha.storyvault.dto.ReadingHistoryStats(

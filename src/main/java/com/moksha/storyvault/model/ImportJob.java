@@ -6,6 +6,7 @@ import com.moksha.storyvault.model.enums.Platform;
 import jakarta.persistence.*;
 import lombok.*;
 import org.hibernate.annotations.CreationTimestamp;
+import org.hibernate.annotations.UpdateTimestamp;
 
 import java.time.LocalDateTime;
 
@@ -49,10 +50,28 @@ public class ImportJob {
     @Builder.Default
     private int itemsProcessed = 0;
 
+    @Column(name = "current_page", nullable = false)
+    @Builder.Default
+    private int currentPage = 0;
+
+    @Column(name = "total_pages")
+    private Integer totalPages;
+
+    @Column(name = "error_count", nullable = false)
+    @Builder.Default
+    private int errorCount = 0;
+
     @Column(name = "error_message", columnDefinition = "TEXT")
     private String errorMessage;
+
+    @Column(name = "last_error", columnDefinition = "TEXT")
+    private String lastError;
 
     @CreationTimestamp
     @Column(name = "created_at", nullable = false, updatable = false)
     private LocalDateTime createdAt;
+
+    @UpdateTimestamp
+    @Column(name = "updated_at", nullable = false)
+    private LocalDateTime updatedAt;
 }

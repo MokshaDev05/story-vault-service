@@ -1,13 +1,16 @@
 package com.moksha.storyvault.service.impl;
 
+import com.moksha.storyvault.dto.PersonalNoteResponse;
 import com.moksha.storyvault.dto.ReadingHistoryStats;
 import com.moksha.storyvault.dto.StoryPublicResponse;
 import com.moksha.storyvault.dto.StoryRequest;
 import com.moksha.storyvault.dto.StoryResponse;
 import com.moksha.storyvault.dto.StorySearchRequest;
 import com.moksha.storyvault.dto.UpsertResult;
+import com.moksha.storyvault.exception.DuplicateNoteException;
 import com.moksha.storyvault.exception.DuplicateStoryException;
 import com.moksha.storyvault.exception.StoryNotFoundException;
+import com.moksha.storyvault.dto.LabelSummary;
 import com.moksha.storyvault.dto.ShelfSummary;
 import com.moksha.storyvault.model.ConnectedAccount;
 import com.moksha.storyvault.model.Shelf;
@@ -19,14 +22,18 @@ import com.moksha.storyvault.model.enums.Platform;
 import com.moksha.storyvault.model.enums.Rating;
 import com.moksha.storyvault.model.enums.ReadingStatus;
 import com.moksha.storyvault.model.enums.StoryStatus;
+import com.moksha.storyvault.model.enums.TimelineEventType;
 import com.moksha.storyvault.repository.ConnectedAccountRepository;
 import com.moksha.storyvault.repository.ReadingHistoryRepository;
 import com.moksha.storyvault.repository.StoryRepository;
 import com.moksha.storyvault.repository.TagRepository;
 import com.moksha.storyvault.security.SecurityUtils;
 import com.moksha.storyvault.service.StoryService;
+import com.moksha.storyvault.service.TimelineService;
 import jakarta.persistence.criteria.JoinType;
 import jakarta.persistence.criteria.Predicate;
+import jakarta.persistence.criteria.Root;
+import jakarta.persistence.criteria.Subquery;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.jpa.domain.Specification;
@@ -38,8 +45,10 @@ import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
@@ -56,6 +65,7 @@ public class StoryServiceImpl implements StoryService {
     private final ReadingHistoryRepository readingHistoryRepository;
     private final ConnectedAccountRepository connectedAccountRepository;
     private final SecurityUtils securityUtils;
+    private final TimelineService timelineService;
 
     // ── Create ────────────────────────────────────────────────────────────────
 
@@ -80,7 +90,10 @@ public class StoryServiceImpl implements StoryService {
 
         log.info("Creating story: {}", request.getTitle());
         Story story = buildFromRequest(request, user, normUrl);
-        return toResponse(storyRepository.save(story));
+        Story saved = storyRepository.save(story);
+        timelineService.record(user, saved, TimelineEventType.STORY_FIRST_SEEN,
+                storyMeta(saved));
+        return toResponse(saved);
     }
 
     // ── Upsert ────────────────────────────────────────────────────────────────
@@ -93,7 +106,7 @@ public class StoryServiceImpl implements StoryService {
 
         if (existing.isPresent()) {
             log.info("Upsert — merging metadata for story id {}", existing.get().getId());
-            return new UpsertResult(mergeAo3Metadata(existing.get(), request), false);
+            return new UpsertResult(mergeAndRecordRevisit(existing.get(), request, user), false);
         }
 
         try {
@@ -105,7 +118,7 @@ public class StoryServiceImpl implements StoryService {
             Story concurrent = storyRepository.findById(e.getExistingStory().getId())
                     .orElseThrow(() -> e);
             log.info("Upsert — concurrent duplicate resolved for story id {}", concurrent.getId());
-            return new UpsertResult(mergeAo3Metadata(concurrent, request), false);
+            return new UpsertResult(mergeAndRecordRevisit(concurrent, request, user), false);
         }
     }
 
@@ -130,7 +143,14 @@ public class StoryServiceImpl implements StoryService {
     @Transactional
     public StoryResponse update(Long id, StoryRequest request) {
         log.info("Updating story id: {}", id);
+        User user = securityUtils.currentUser();
         Story story = getOrThrow(id);
+
+        ReadingStatus prevStatus  = story.getReadingStatus();
+        Integer       prevChapter = story.getCurrentChapter();
+        KudosStatus   prevKudos   = story.getKudosStatus();
+        String        prevNotes   = story.getPersonalNotes();
+
         story.setTitle(request.getTitle());
         story.setAuthor(request.getAuthor());
         story.setFandom(request.getFandom());
@@ -156,9 +176,12 @@ public class StoryServiceImpl implements StoryService {
             story.setKudosDetectedAt(LocalDateTime.now());
         }
         if (request.getSourceAccountId() != null) {
-            User user = securityUtils.currentUser();
             connectedAccountRepository.findByIdAndUser(request.getSourceAccountId(), user)
                     .ifPresent(story::setSourceAccount);
+        }
+        if (request.getPersonalNotes() != null) {
+            String trimmed = request.getPersonalNotes().strip();
+            story.setPersonalNotes(trimmed.isEmpty() ? null : trimmed);
         }
 
         story.getTags().clear();
@@ -176,7 +199,9 @@ public class StoryServiceImpl implements StoryService {
         story.getCategories().clear();
         if (request.getCategories() != null) story.getCategories().addAll(request.getCategories());
 
-        return toResponse(storyRepository.save(story));
+        Story saved = storyRepository.save(story);
+        recordUpdateEvents(user, saved, prevStatus, prevChapter, prevKudos, prevNotes, request);
+        return toResponse(saved);
     }
 
     @Override
@@ -185,6 +210,72 @@ public class StoryServiceImpl implements StoryService {
         Story story = getOrThrow(id);
         storyRepository.delete(story);
         log.info("Deleted story id: {}", id);
+    }
+
+    @Override
+    @Transactional
+    public StoryResponse updatePersonalNote(Long id, String content) {
+        User user = securityUtils.currentUser();
+        Story story = getOrThrow(id);
+        boolean wasEmpty = !StringUtils.hasText(story.getPersonalNotes());
+
+        String trimmed = content != null ? content.strip() : null;
+        if (trimmed != null && trimmed.isEmpty()) trimmed = null;
+
+        LocalDateTime now = LocalDateTime.now();
+        if (trimmed != null) {
+            if (wasEmpty) story.setPersonalNoteCreatedAt(now);
+            story.setPersonalNoteUpdatedAt(now);
+        } else {
+            story.setPersonalNoteCreatedAt(null);
+            story.setPersonalNoteUpdatedAt(null);
+        }
+        story.setPersonalNotes(trimmed);
+        Story saved = storyRepository.save(story);
+
+        if (StringUtils.hasText(trimmed)) {
+            TimelineEventType type = wasEmpty ? TimelineEventType.NOTE_ADDED : TimelineEventType.NOTE_EDITED;
+            Map<String, Object> meta = storyMeta(saved);
+            meta.put("preview", trimmed.substring(0, Math.min(120, trimmed.length())));
+            timelineService.record(user, saved, type, meta);
+        }
+        return toResponse(saved);
+    }
+
+    @Override
+    public PersonalNoteResponse getPersonalNote(Long storyId) {
+        Story story = getOrThrow(storyId);
+        return toNoteResponse(story);
+    }
+
+    @Override
+    @Transactional
+    public PersonalNoteResponse createPersonalNote(Long storyId, String content) {
+        Story story = getOrThrow(storyId);
+        if (StringUtils.hasText(story.getPersonalNotes())) {
+            throw new DuplicateNoteException(storyId);
+        }
+        String trimmed = content.strip();
+        LocalDateTime now = LocalDateTime.now();
+        story.setPersonalNotes(trimmed);
+        story.setPersonalNoteCreatedAt(now);
+        story.setPersonalNoteUpdatedAt(now);
+        Story saved = storyRepository.save(story);
+        User user = securityUtils.currentUser();
+        Map<String, Object> meta = storyMeta(saved);
+        meta.put("preview", trimmed.substring(0, Math.min(120, trimmed.length())));
+        timelineService.record(user, saved, TimelineEventType.NOTE_ADDED, meta);
+        return toNoteResponse(saved);
+    }
+
+    @Override
+    @Transactional
+    public void deletePersonalNote(Long storyId) {
+        Story story = getOrThrow(storyId);
+        story.setPersonalNotes(null);
+        story.setPersonalNoteCreatedAt(null);
+        story.setPersonalNoteUpdatedAt(null);
+        storyRepository.save(story);
     }
 
     // ── Search ────────────────────────────────────────────────────────────────
@@ -310,6 +401,38 @@ public class StoryServiceImpl implements StoryService {
                 var colJoin = root.join("collections", JoinType.INNER);
                 predicates.add(cb.equal(colJoin.get("id"), req.getCollectionId()));
                 predicates.add(cb.equal(colJoin.get("user"), user));
+            }
+
+            if (StringUtils.hasText(req.getNoteContains()))
+                predicates.add(cb.like(cb.lower(root.get("personalNotes")),
+                        "%" + req.getNoteContains().toLowerCase() + "%"));
+            if (req.getHasNote() != null) {
+                if (Boolean.TRUE.equals(req.getHasNote())) {
+                    predicates.add(cb.isNotNull(root.get("personalNotes")));
+                } else {
+                    predicates.add(cb.isNull(root.get("personalNotes")));
+                }
+            }
+
+            if (req.getLabelId() != null) {
+                query.distinct(true);
+                var labelJoin = root.join("labels", JoinType.INNER);
+                predicates.add(cb.equal(labelJoin.get("id"), req.getLabelId()));
+                predicates.add(cb.equal(labelJoin.get("user"), user));
+            }
+            if (req.getLabelIds() != null && !req.getLabelIds().isEmpty()) {
+                query.distinct(true);
+                var labelJoin = root.join("labels", JoinType.INNER);
+                predicates.add(labelJoin.get("id").in(req.getLabelIds()));
+                predicates.add(cb.equal(labelJoin.get("user"), user));
+            }
+            if (Boolean.TRUE.equals(req.getNoLabels())) {
+                Subquery<Long> sub = query.subquery(Long.class);
+                Root<Story> subStory = sub.from(Story.class);
+                sub.select(cb.literal(1L));
+                subStory.join("labels", JoinType.INNER);
+                sub.where(cb.equal(subStory.get("id"), root.get("id")));
+                predicates.add(cb.not(cb.exists(sub)));
             }
 
             if (finalChapterFilter != null)
@@ -608,9 +731,85 @@ public class StoryServiceImpl implements StoryService {
                 .collect(Collectors.toSet());
     }
 
+    /** Merge AO3 metadata and record STORY_REVISITED + any derived change events. */
+    private StoryResponse mergeAndRecordRevisit(Story story, StoryRequest request, User user) {
+        ReadingStatus prevStatus  = story.getReadingStatus();
+        Integer       prevChapter = story.getCurrentChapter();
+        KudosStatus   prevKudos   = story.getKudosStatus();
+
+        StoryResponse response = mergeAo3Metadata(story, request);
+
+        timelineService.record(user, story, TimelineEventType.STORY_REVISITED, storyMeta(story));
+
+        if (!Objects.equals(story.getCurrentChapter(), prevChapter) && story.getCurrentChapter() != null) {
+            Map<String, Object> meta = storyMeta(story);
+            meta.put("from", prevChapter != null ? prevChapter : 0);
+            meta.put("to", story.getCurrentChapter());
+            timelineService.record(user, story, TimelineEventType.CHAPTER_PROGRESS_UPDATED, meta);
+        }
+        if (story.getReadingStatus() != null && story.getReadingStatus() != prevStatus) {
+            Map<String, Object> meta = storyMeta(story);
+            meta.put("from", prevStatus != null ? prevStatus.name() : "NONE");
+            meta.put("to", story.getReadingStatus().name());
+            timelineService.record(user, story, TimelineEventType.READING_STATUS_CHANGED, meta);
+        }
+        if (story.getKudosStatus() == KudosStatus.GIVEN && prevKudos != KudosStatus.GIVEN) {
+            timelineService.record(user, story, TimelineEventType.KUDOS_GIVEN, storyMeta(story));
+        }
+
+        return response;
+    }
+
+    /** Emit change events for a user-initiated update(). */
+    private void recordUpdateEvents(User user, Story saved,
+                                    ReadingStatus prevStatus, Integer prevChapter, KudosStatus prevKudos,
+                                    String prevNotes, StoryRequest request) {
+        if (!Objects.equals(saved.getCurrentChapter(), prevChapter) && saved.getCurrentChapter() != null) {
+            Map<String, Object> meta = storyMeta(saved);
+            meta.put("from", prevChapter != null ? prevChapter : 0);
+            meta.put("to", saved.getCurrentChapter());
+            timelineService.record(user, saved, TimelineEventType.CHAPTER_PROGRESS_UPDATED, meta);
+        }
+        if (saved.getReadingStatus() != null && saved.getReadingStatus() != prevStatus) {
+            Map<String, Object> meta = storyMeta(saved);
+            meta.put("from", prevStatus != null ? prevStatus.name() : "NONE");
+            meta.put("to", saved.getReadingStatus().name());
+            timelineService.record(user, saved, TimelineEventType.READING_STATUS_CHANGED, meta);
+        }
+        if (saved.getKudosStatus() == KudosStatus.GIVEN && prevKudos != KudosStatus.GIVEN) {
+            timelineService.record(user, saved, TimelineEventType.KUDOS_GIVEN, storyMeta(saved));
+        }
+        if (request.getPersonalNotes() != null && StringUtils.hasText(saved.getPersonalNotes())) {
+            TimelineEventType type = !StringUtils.hasText(prevNotes) ? TimelineEventType.NOTE_ADDED : TimelineEventType.NOTE_EDITED;
+            Map<String, Object> meta = storyMeta(saved);
+            String note = saved.getPersonalNotes();
+            meta.put("preview", note.substring(0, Math.min(120, note.length())));
+            timelineService.record(user, saved, type, meta);
+        }
+    }
+
+    /** Base metadata map included in every story-linked event. */
+    private Map<String, Object> storyMeta(Story story) {
+        Map<String, Object> meta = new LinkedHashMap<>();
+        meta.put("storyTitle", story.getTitle());
+        meta.put("fandom", story.getFandom());
+        meta.put("platform", story.getPlatform().name());
+        return meta;
+    }
+
     private static String normaliseUrl(String url) {
         if (!StringUtils.hasText(url)) return null;
         return url.trim().replaceFirst("[?#].*", "").replaceFirst("/+$", "");
+    }
+
+    private PersonalNoteResponse toNoteResponse(Story story) {
+        return PersonalNoteResponse.builder()
+                .storyId(story.getId())
+                .content(story.getPersonalNotes())
+                .hasNote(StringUtils.hasText(story.getPersonalNotes()))
+                .createdAt(story.getPersonalNoteCreatedAt())
+                .updatedAt(story.getPersonalNoteUpdatedAt())
+                .build();
     }
 
     private StoryResponse toResponse(Story story) {
@@ -656,6 +855,15 @@ public class StoryServiceImpl implements StoryService {
                 .collections(story.getCollections().stream()
                         .map(c -> ShelfSummary.builder().id(c.getId()).name(c.getName()).build())
                         .sorted(java.util.Comparator.comparing(ShelfSummary::getName))
+                        .collect(Collectors.toList()))
+                .personalNotes(story.getPersonalNotes())
+                .hasNote(StringUtils.hasText(story.getPersonalNotes()))
+                .notePreview(story.getPersonalNotes() != null
+                        ? story.getPersonalNotes().substring(0, Math.min(120, story.getPersonalNotes().length()))
+                        : null)
+                .labels(story.getLabels().stream()
+                        .map(l -> LabelSummary.builder().id(l.getId()).name(l.getName()).color(l.getColor()).build())
+                        .sorted(java.util.Comparator.comparing(LabelSummary::getName))
                         .collect(Collectors.toList()))
                 .build();
     }

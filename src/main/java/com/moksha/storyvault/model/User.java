@@ -27,6 +27,10 @@ public class User implements UserDetails {
     @Column(nullable = false)
     private String password;
 
+    @Column(name = "preferred_language", nullable = false, length = 10)
+    @Builder.Default
+    private String preferredLanguage = "en";
+
     @Override
     public Collection<? extends GrantedAuthority> getAuthorities() {
         return List.of();

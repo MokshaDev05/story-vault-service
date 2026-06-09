@@ -8,6 +8,8 @@ import com.moksha.storyvault.model.User;
 import com.moksha.storyvault.model.enums.Platform;
 import com.moksha.storyvault.model.enums.Rating;
 import com.moksha.storyvault.model.enums.StoryStatus;
+import com.moksha.storyvault.model.Label;
+import com.moksha.storyvault.repository.LabelRepository;
 import com.moksha.storyvault.repository.StoryRepository;
 import com.moksha.storyvault.repository.TagRepository;
 import com.moksha.storyvault.repository.UserRepository;
@@ -35,6 +37,7 @@ class StorySearchIntegrationTest {
     @Autowired StoryRepository storyRepository;
     @Autowired TagRepository tagRepository;
     @Autowired UserRepository userRepository;
+    @Autowired LabelRepository labelRepository;
 
     private User user;
 
@@ -161,6 +164,89 @@ class StorySearchIntegrationTest {
 
         assertThat(results).extracting(StoryResponse::getTitle)
                 .containsExactlyInAnyOrder("Story A");
+    }
+
+    // ── Filter by personal notes ──────────────────────────────────────────────
+
+    @Test
+    void search_filters_by_noteContains() {
+        Story noted = storyRepository.saveAndFlush(Story.builder()
+                .title("Noted Story").author("Author").fandom("Fandom")
+                .platform(Platform.AO3).status(StoryStatus.ONGOING).rating(Rating.NOT_RATED)
+                .personalNotes("this one made me cry").user(user).build());
+        storyRepository.saveAndFlush(Story.builder()
+                .title("No Note Story").author("Author").fandom("Fandom")
+                .platform(Platform.AO3).status(StoryStatus.ONGOING).rating(Rating.NOT_RATED)
+                .user(user).build());
+
+        List<StoryResponse> results = storyService.advancedSearch(
+                StorySearchRequest.builder().noteContains("cry").build());
+
+        assertThat(results).extracting(StoryResponse::getTitle)
+                .containsExactlyInAnyOrder("Noted Story");
+    }
+
+    @Test
+    void search_noteContains_is_case_insensitive() {
+        storyRepository.saveAndFlush(Story.builder()
+                .title("Noted Story").author("Author").fandom("Fandom")
+                .platform(Platform.AO3).status(StoryStatus.ONGOING).rating(Rating.NOT_RATED)
+                .personalNotes("this one made me CRY").user(user).build());
+
+        List<StoryResponse> results = storyService.advancedSearch(
+                StorySearchRequest.builder().noteContains("cry").build());
+
+        assertThat(results).extracting(StoryResponse::getTitle)
+                .containsExactlyInAnyOrder("Noted Story");
+    }
+
+    // ── Filter by label ───────────────────────────────────────────────────────
+
+    @Test
+    void search_filters_by_labelId() {
+        Label faveLabel = labelRepository.saveAndFlush(
+                Label.builder().name("Favourites").user(user).build());
+        Label otherLabel = labelRepository.saveAndFlush(
+                Label.builder().name("Other").user(user).build());
+
+        Story labelled = storyRepository.saveAndFlush(Story.builder()
+                .title("Labelled Story").author("Author").fandom("Fandom")
+                .platform(Platform.AO3).status(StoryStatus.ONGOING).rating(Rating.NOT_RATED)
+                .user(user).build());
+        labelled.getLabels().add(faveLabel);
+        storyRepository.saveAndFlush(labelled);
+
+        Story unlabelled = storyRepository.saveAndFlush(Story.builder()
+                .title("Unlabelled Story").author("Author").fandom("Fandom")
+                .platform(Platform.AO3).status(StoryStatus.ONGOING).rating(Rating.NOT_RATED)
+                .user(user).build());
+
+        List<StoryResponse> results = storyService.advancedSearch(
+                StorySearchRequest.builder().labelId(faveLabel.getId()).build());
+
+        assertThat(results).extracting(StoryResponse::getTitle)
+                .containsExactlyInAnyOrder("Labelled Story");
+    }
+
+    // ── User isolation ────────────────────────────────────────────────────────
+
+    @Test
+    void search_is_user_scoped_and_never_returns_other_users_stories() {
+        save("My Story", "Author", "Fandom X", List.of(), Set.of());
+
+        User otherUser = userRepository.save(User.builder()
+                .username("search-other-" + System.nanoTime())
+                .password("x").build());
+        storyRepository.saveAndFlush(Story.builder()
+                .title("Other User Story").author("Author").fandom("Fandom X")
+                .platform(Platform.AO3).status(StoryStatus.ONGOING).rating(Rating.NOT_RATED)
+                .user(otherUser).build());
+
+        List<StoryResponse> results = storyService.advancedSearch(
+                StorySearchRequest.builder().build());
+
+        assertThat(results).extracting(StoryResponse::getTitle)
+                .containsExactlyInAnyOrder("My Story");
     }
 
     // ── No filter returns all ─────────────────────────────────────────────────

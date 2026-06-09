@@ -1,6 +1,10 @@
 package com.moksha.storyvault.controller;
 
 import com.moksha.storyvault.dto.ApiResponse;
+import com.moksha.storyvault.dto.LabelResponse;
+import com.moksha.storyvault.dto.NoteRequest;
+import com.moksha.storyvault.dto.PersonalNoteRequest;
+import com.moksha.storyvault.dto.PersonalNoteResponse;
 import com.moksha.storyvault.dto.StoryRequest;
 import com.moksha.storyvault.dto.StoryResponse;
 import com.moksha.storyvault.dto.StorySearchRequest;
@@ -8,6 +12,7 @@ import com.moksha.storyvault.dto.UpsertResult;
 import com.moksha.storyvault.model.enums.Platform;
 import com.moksha.storyvault.model.enums.Rating;
 import com.moksha.storyvault.model.enums.StoryStatus;
+import com.moksha.storyvault.service.LabelService;
 import com.moksha.storyvault.service.StoryService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -23,6 +28,7 @@ import java.util.List;
 public class StoryController {
 
     private final StoryService storyService;
+    private final LabelService labelService;
 
     @PostMapping
     public ResponseEntity<ApiResponse<StoryResponse>> create(@Valid @RequestBody StoryRequest request) {
@@ -79,9 +85,54 @@ public class StoryController {
         return ResponseEntity.ok(ApiResponse.success("Story updated", storyService.update(id, request)));
     }
 
+    @GetMapping("/{id}/note")
+    public ResponseEntity<ApiResponse<PersonalNoteResponse>> getNote(@PathVariable Long id) {
+        return ResponseEntity.ok(ApiResponse.success("Note retrieved",
+                storyService.getPersonalNote(id)));
+    }
+
+    @PostMapping("/{id}/note")
+    public ResponseEntity<ApiResponse<PersonalNoteResponse>> createNote(
+            @PathVariable Long id,
+            @Valid @RequestBody NoteRequest request) {
+        return ResponseEntity.status(HttpStatus.CREATED)
+                .body(ApiResponse.success("Note created",
+                        storyService.createPersonalNote(id, request.getContent())));
+    }
+
+    @PutMapping("/{id}/note")
+    public ResponseEntity<ApiResponse<StoryResponse>> updateNote(
+            @PathVariable Long id,
+            @RequestBody PersonalNoteRequest request) {
+        return ResponseEntity.ok(ApiResponse.success("Note saved",
+                storyService.updatePersonalNote(id, request.getContent())));
+    }
+
+    @DeleteMapping("/{id}/note")
+    public ResponseEntity<Void> deleteNote(@PathVariable Long id) {
+        storyService.deletePersonalNote(id);
+        return ResponseEntity.noContent().build();
+    }
+
     @DeleteMapping("/{id}")
     public ResponseEntity<ApiResponse<Void>> delete(@PathVariable Long id) {
         storyService.delete(id);
         return ResponseEntity.ok(ApiResponse.success("Story deleted"));
+    }
+
+    @PostMapping("/{storyId}/labels/{labelId}")
+    public ResponseEntity<ApiResponse<LabelResponse>> addLabel(
+            @PathVariable Long storyId,
+            @PathVariable Long labelId) {
+        return ResponseEntity.ok(ApiResponse.success("Label added",
+                labelService.attachStory(labelId, storyId)));
+    }
+
+    @DeleteMapping("/{storyId}/labels/{labelId}")
+    public ResponseEntity<Void> removeLabel(
+            @PathVariable Long storyId,
+            @PathVariable Long labelId) {
+        labelService.detachStory(labelId, storyId);
+        return ResponseEntity.noContent().build();
     }
 }

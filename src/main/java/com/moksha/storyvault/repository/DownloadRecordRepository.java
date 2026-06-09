@@ -3,6 +3,7 @@ package com.moksha.storyvault.repository;
 import com.moksha.storyvault.model.DownloadRecord;
 import com.moksha.storyvault.model.User;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
@@ -11,7 +12,7 @@ import java.util.List;
 import java.util.Optional;
 
 @Repository
-public interface DownloadRecordRepository extends JpaRepository<DownloadRecord, Long> {
+public interface DownloadRecordRepository extends JpaRepository<DownloadRecord, Long>, JpaSpecificationExecutor<DownloadRecord> {
 
     List<DownloadRecord> findByStoryIdOrderByDownloadedAtDesc(Long storyId);
 

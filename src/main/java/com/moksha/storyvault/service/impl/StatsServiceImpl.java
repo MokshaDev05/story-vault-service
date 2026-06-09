@@ -4,6 +4,7 @@ import com.moksha.storyvault.dto.LabelCount;
 import com.moksha.storyvault.dto.StatsResponse;
 import com.moksha.storyvault.dto.StoryAccessStat;
 import com.moksha.storyvault.repository.ConnectedAccountRepository;
+import com.moksha.storyvault.repository.LabelRepository;
 import com.moksha.storyvault.repository.ReadingHistoryRepository;
 import com.moksha.storyvault.repository.ShelfRepository;
 import com.moksha.storyvault.repository.StoryRepository;
@@ -31,6 +32,7 @@ public class StatsServiceImpl implements StatsService {
     private final ReadingHistoryRepository readingHistoryRepository;
     private final ShelfRepository shelfRepository;
     private final ConnectedAccountRepository connectedAccountRepository;
+    private final LabelRepository labelRepository;
     private final SecurityUtils securityUtils;
 
     @Override
@@ -51,6 +53,9 @@ public class StatsServiceImpl implements StatsService {
                 .topTags(toLabelCountList(storyRepository.topTagsByUser(user, TOP_10)))
                 .mostAccessedStories(toAccessStatList(readingHistoryRepository.mostAccessedStoriesByUser(user, TOP_10)))
                 .recentlyAccessedStories(toRecentList(storyRepository.recentlyAccessedByUser(user, TOP_10)))
+                .storiesWithNotes(storyRepository.countStoriesWithNotesByUser(user))
+                .labeledStoriesCount(labelRepository.countDistinctLabeledStoriesByUser(user))
+                .topLabels(toLabelCountList(labelRepository.topLabelsByUser(user)))
                 .build();
     }
 

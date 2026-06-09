@@ -22,4 +22,7 @@ public class StatsResponse {
     private List<LabelCount> topTags;
     private List<StoryAccessStat> mostAccessedStories;
     private List<StoryAccessStat> recentlyAccessedStories;
+    private long storiesWithNotes;
+    private long labeledStoriesCount;
+    private List<LabelCount> topLabels;
 }

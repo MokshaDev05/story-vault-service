@@ -90,4 +90,6 @@ public class StoryRequest {
     private KudosStatus kudosStatus;
 
     private Long sourceAccountId;
+
+    private String personalNotes;
 }

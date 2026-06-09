@@ -7,6 +7,7 @@ import com.moksha.storyvault.model.enums.StoryStatus;
 import lombok.*;
 
 import java.time.LocalDate;
+import java.util.List;
 
 @Getter
 @Setter
@@ -52,6 +53,13 @@ public class StorySearchRequest {
 
     // ── Collections ───────────────────────────────────────────────────────────
     private Long collectionId;
+
+    // ── Notes & Labels ────────────────────────────────────────────────────────
+    private String noteContains;
+    private Boolean hasNote;
+    private Long labelId;
+    private List<Long> labelIds;
+    private Boolean noLabels;
 
     // ── Sort ──────────────────────────────────────────────────────────────────
     @Builder.Default

@@ -5,15 +5,19 @@ import com.moksha.storyvault.dto.ShelfResponse;
 import com.moksha.storyvault.exception.ShelfNotFoundException;
 import com.moksha.storyvault.exception.StoryNotFoundException;
 import com.moksha.storyvault.model.Shelf;
+import com.moksha.storyvault.model.Story;
+import com.moksha.storyvault.model.enums.TimelineEventType;
 import com.moksha.storyvault.repository.ShelfRepository;
 import com.moksha.storyvault.repository.StoryRepository;
 import com.moksha.storyvault.security.SecurityUtils;
 import com.moksha.storyvault.service.ShelfService;
+import com.moksha.storyvault.service.TimelineService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
+import java.util.Map;
 import java.util.stream.Collectors;
 
 @Service
@@ -24,6 +28,7 @@ public class ShelfServiceImpl implements ShelfService {
     private final ShelfRepository shelfRepository;
     private final StoryRepository storyRepository;
     private final SecurityUtils securityUtils;
+    private final TimelineService timelineService;
 
     @Override
     @Transactional
@@ -77,10 +82,14 @@ public class ShelfServiceImpl implements ShelfService {
         var user = securityUtils.currentUser();
         Shelf shelf = shelfRepository.findByIdAndUser(shelfId, user)
                 .orElseThrow(() -> new ShelfNotFoundException(shelfId));
-        var story = storyRepository.findByIdAndUser(storyId, user)
+        Story story = storyRepository.findByIdAndUser(storyId, user)
                 .orElseThrow(() -> new StoryNotFoundException(storyId));
         shelf.getStories().add(story);
-        return toResponse(shelfRepository.save(shelf));
+        ShelfResponse response = toResponse(shelfRepository.save(shelf));
+        timelineService.record(user, story, TimelineEventType.COLLECTION_ADDED,
+                Map.of("storyTitle", story.getTitle(), "fandom", story.getFandom(),
+                       "platform", story.getPlatform().name(), "collectionName", shelf.getName()));
+        return response;
     }
 
     @Override
@@ -89,8 +98,13 @@ public class ShelfServiceImpl implements ShelfService {
         var user = securityUtils.currentUser();
         Shelf shelf = shelfRepository.findByIdAndUser(shelfId, user)
                 .orElseThrow(() -> new ShelfNotFoundException(shelfId));
+        Story story = storyRepository.findByIdAndUser(storyId, user)
+                .orElseThrow(() -> new StoryNotFoundException(storyId));
         shelf.getStories().removeIf(s -> s.getId().equals(storyId));
         shelfRepository.save(shelf);
+        timelineService.record(user, story, TimelineEventType.COLLECTION_REMOVED,
+                Map.of("storyTitle", story.getTitle(), "fandom", story.getFandom(),
+                       "platform", story.getPlatform().name(), "collectionName", shelf.getName()));
     }
 
     private ShelfResponse toResponse(Shelf shelf) {

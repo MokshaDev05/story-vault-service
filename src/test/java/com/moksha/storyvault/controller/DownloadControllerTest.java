@@ -258,4 +258,157 @@ class DownloadControllerTest {
         assertThat(listB).hasSize(1);
         assertThat(((Map<?, ?>) listB.get(0)).get("fileType")).isEqualTo("PDF");
     }
+
+    // ── Filter ────────────────────────────────────────────────────────────────
+
+    @Test
+    void filter_by_file_type_returns_matching_only() {
+        Long storyId = createStory("fft-" + System.nanoTime(), tokenA);
+        createDownload(storyId, "EPUB", tokenA);
+        createDownload(storyId, "PDF",  tokenA);
+
+        List<?> epubs = filterDownloads("{\"fileType\":\"EPUB\"}", tokenA);
+        assertThat(epubs).hasSize(1);
+        assertThat(((Map<?, ?>) epubs.get(0)).get("fileType")).isEqualTo("EPUB");
+
+        List<?> pdfs = filterDownloads("{\"fileType\":\"PDF\"}", tokenA);
+        assertThat(pdfs).hasSize(1);
+        assertThat(((Map<?, ?>) pdfs.get(0)).get("fileType")).isEqualTo("PDF");
+    }
+
+    @Test
+    void filter_by_platform_returns_matching_only() {
+        Long storyId = createStory("fplat-" + System.nanoTime(), tokenA);
+        createDownload(storyId, "EPUB", tokenA);   // AO3
+
+        String wattpadBody = """
+                {"platform":"WATTPAD","fileType":"HTML",
+                 "sourceUrl":"https://www.wattpad.com/story/123"}
+                """;
+        rest.exchange(url("/api/v1/stories/" + storyId + "/downloads"), HttpMethod.POST,
+                new HttpEntity<>(wattpadBody, auth(tokenA)), Map.class);
+
+        List<?> ao3 = filterDownloads("{\"platform\":\"AO3\"}", tokenA);
+        assertThat(ao3).hasSize(1);
+        assertThat(((Map<?, ?>) ao3.get(0)).get("platform")).isEqualTo("AO3");
+
+        List<?> wattpad = filterDownloads("{\"platform\":\"WATTPAD\"}", tokenA);
+        assertThat(wattpad).hasSize(1);
+        assertThat(((Map<?, ?>) wattpad.get(0)).get("platform")).isEqualTo("WATTPAD");
+    }
+
+    @Test
+    void filter_by_date_range_returns_matching_only() {
+        Long storyId = createStory("fdate-" + System.nanoTime(), tokenA);
+        createDownload(storyId, "EPUB", tokenA);
+
+        java.time.LocalDate today = java.time.LocalDate.now();
+        String filterBody = String.format("{\"fromDate\":\"%s\",\"toDate\":\"%s\"}",
+                today.minusDays(1), today.plusDays(1));
+
+        List<?> results = filterDownloads(filterBody, tokenA);
+        assertThat(results).hasSize(1);
+
+        String futureBody = String.format("{\"fromDate\":\"%s\",\"toDate\":\"%s\"}",
+                today.plusDays(1), today.plusDays(2));
+        List<?> empty = filterDownloads(futureBody, tokenA);
+        assertThat(empty).isEmpty();
+    }
+
+    @Test
+    void filter_by_fandom_returns_matching_only() {
+        long nano = System.nanoTime();
+        Long hpStory  = createStoryWithFandom("fan1-" + nano, "Harry Potter", tokenA);
+        Long naruStory = createStoryWithFandom("fan2-" + nano, "Naruto", tokenA);
+        createDownload(hpStory,   "EPUB", tokenA);
+        createDownload(naruStory, "PDF",  tokenA);
+
+        List<?> hp = filterDownloads("{\"fandom\":\"Harry Potter\"}", tokenA);
+        assertThat(hp).hasSize(1);
+        assertThat(((Map<?, ?>) hp.get(0)).get("storyFandom")).isEqualTo("Harry Potter");
+
+        List<?> naruto = filterDownloads("{\"fandom\":\"Naruto\"}", tokenA);
+        assertThat(naruto).hasSize(1);
+        assertThat(((Map<?, ?>) naruto.get(0)).get("storyFandom")).isEqualTo("Naruto");
+    }
+
+    @Test
+    void filter_by_author_returns_matching_only() {
+        long nano = System.nanoTime();
+        Long s1 = createStoryWithAuthor("auth1-" + nano, "AuthorAlice", tokenA);
+        Long s2 = createStoryWithAuthor("auth2-" + nano, "AuthorBob",   tokenA);
+        createDownload(s1, "EPUB", tokenA);
+        createDownload(s2, "PDF",  tokenA);
+
+        List<?> alice = filterDownloads("{\"author\":\"AuthorAlice\"}", tokenA);
+        assertThat(alice).hasSize(1);
+        assertThat(((Map<?, ?>) alice.get(0)).get("storyAuthor")).isEqualTo("AuthorAlice");
+    }
+
+    @Test
+    void filter_empty_body_returns_all_user_downloads() {
+        Long storyId = createStory("fall-" + System.nanoTime(), tokenA);
+        createDownload(storyId, "EPUB", tokenA);
+        createDownload(storyId, "PDF",  tokenA);
+
+        List<?> all = filterDownloads("{}", tokenA);
+        assertThat(all).hasSize(2);
+    }
+
+    @Test
+    void filter_is_user_scoped() {
+        Long storyA = createStory("fscope-" + System.nanoTime(), tokenA);
+        createDownload(storyA, "EPUB", tokenA);
+
+        List<?> bResults = filterDownloads("{}", tokenB);
+        assertThat(bResults).isEmpty();
+    }
+
+    @Test
+    void response_includes_story_fandom_author_and_original_url() {
+        long nano = System.nanoTime();
+        Long storyId = createStoryWithFandom("resp-" + nano, "One Piece", tokenA);
+        createDownload(storyId, "EPUB", tokenA);
+
+        List<?> results = filterDownloads("{\"fandom\":\"One Piece\"}", tokenA);
+        assertThat(results).hasSize(1);
+        Map<?, ?> r = (Map<?, ?>) results.get(0);
+        assertThat(r.get("storyFandom")).isEqualTo("One Piece");
+        assertThat(r.get("storyAuthor")).isNotNull();
+        assertThat(r.get("storyOriginalUrl")).isNotNull();
+    }
+
+    // ── Helpers ───────────────────────────────────────────────────────────────
+
+    private List<?> filterDownloads(String body, String token) {
+        ResponseEntity<Map> resp = rest.exchange(
+                url("/api/v1/downloads/filter"), HttpMethod.POST,
+                new HttpEntity<>(body, auth(token)), Map.class);
+        assertThat(resp.getStatusCode()).isEqualTo(HttpStatus.OK);
+        return (List<?>) resp.getBody().get("data");
+    }
+
+    private Long createStoryWithFandom(String workId, String fandom, String token) {
+        String body = """
+                {"title":"Story %s","author":"Author","fandom":"%s",
+                 "platform":"AO3","sourceWorkId":"%s",
+                 "originalUrl":"https://archiveofourown.org/works/%s"}
+                """.formatted(workId, fandom, workId, workId);
+        ResponseEntity<Map> resp = rest.exchange(
+                url("/api/v1/stories/upsert"), HttpMethod.POST,
+                new HttpEntity<>(body, auth(token)), Map.class);
+        return Long.valueOf(((Map<?, ?>) resp.getBody().get("data")).get("id").toString());
+    }
+
+    private Long createStoryWithAuthor(String workId, String author, String token) {
+        String body = """
+                {"title":"Story %s","author":"%s","fandom":"Fandom",
+                 "platform":"AO3","sourceWorkId":"%s",
+                 "originalUrl":"https://archiveofourown.org/works/%s"}
+                """.formatted(workId, author, workId, workId);
+        ResponseEntity<Map> resp = rest.exchange(
+                url("/api/v1/stories/upsert"), HttpMethod.POST,
+                new HttpEntity<>(body, auth(token)), Map.class);
+        return Long.valueOf(((Map<?, ?>) resp.getBody().get("data")).get("id").toString());
+    }
 }
