@@ -683,6 +683,19 @@ function applyFilters() {
   if (quickFilters.relationship)
     list = list.filter(s => (s.relationships || []).some(r => r.toLowerCase() === quickFilters.relationship.toLowerCase()));
 
+  // Sort by AO3 read date (firstAccessedAt = MIN(ReadingHistory.accessedAt), backfilled from
+  // historyAccessDate during import).  Most recently read first; stories with no read date last,
+  // falling back to vault insertion order.
+  list = [...list].sort((a, b) => {
+    const ta = a.firstAccessedAt ? new Date(a.firstAccessedAt).getTime() : null;
+    const tb = b.firstAccessedAt ? new Date(b.firstAccessedAt).getTime() : null;
+    if (ta === null && tb === null)
+      return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+    if (ta === null) return 1;
+    if (tb === null) return -1;
+    return tb - ta;
+  });
+
   renderCards(list);
   updateCount(list.length, false);
   renderQuickFilterChips();
