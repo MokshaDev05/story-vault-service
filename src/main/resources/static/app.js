@@ -64,7 +64,37 @@ function boot() {
     fetchStories();
     fetchCollections();
     fetchLabels();
+    startImportWatcher();
   }
+}
+
+// ─── Live import watcher ──────────────────────────────────────────────────────
+
+let _importWatcherTimer = null;
+
+function startImportWatcher() {
+  if (_importWatcherTimer) return;
+
+  async function tick() {
+    try {
+      const res = await fetch(`${API}/imports`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) { stopImportWatcher(); return; }
+      const body = await res.json();
+      const jobs = body.data || [];
+      const running = jobs.find(j => j.status === 'RUNNING' || j.status === 'PENDING');
+      if (!running) { stopImportWatcher(); return; }
+      fetchStories();
+    } catch { /* ignore */ }
+  }
+
+  tick();
+  _importWatcherTimer = setInterval(tick, 8000);
+}
+
+function stopImportWatcher() {
+  if (_importWatcherTimer) { clearInterval(_importWatcherTimer); _importWatcherTimer = null; }
 }
 
 // ─── Theme ────────────────────────────────────────────────────────────────────
