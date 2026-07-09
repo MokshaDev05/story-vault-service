@@ -3,13 +3,17 @@ package com.moksha.storyvault.repository;
 import com.moksha.storyvault.model.Story;
 import com.moksha.storyvault.model.User;
 import com.moksha.storyvault.model.enums.Platform;
+import com.moksha.storyvault.model.enums.ReadingStatus;
+import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 
@@ -64,4 +68,22 @@ public interface StoryRepository extends JpaRepository<Story, Long>, JpaSpecific
 
     @Query("SELECT COUNT(DISTINCT s.id) FROM Story s JOIN s.labels l WHERE s.user = :user")
     long countLabeledStoriesByUser(@Param("user") User user);
+
+    @Query(value = "SELECT s.id FROM Story s WHERE s.user = :user " +
+                   "ORDER BY CASE WHEN s.lastAccessedAt IS NULL THEN 1 ELSE 0 END ASC, " +
+                   "s.lastAccessedAt DESC, s.createdAt DESC",
+           countQuery = "SELECT COUNT(s) FROM Story s WHERE s.user = :user")
+    Page<Long> findPagedIdsByUser(@Param("user") User user, Pageable pageable);
+
+    @Query("SELECT DISTINCT s FROM Story s LEFT JOIN FETCH s.tags WHERE s.id IN :ids")
+    List<Story> findByIdsWithTags(@Param("ids") List<Long> ids);
+
+    @Modifying
+    @Query("UPDATE Story s SET s.readingStatus = com.moksha.storyvault.model.enums.ReadingStatus.FINISHED_READING " +
+           "WHERE s.user = :user " +
+           "AND s.status = com.moksha.storyvault.model.enums.StoryStatus.COMPLETE " +
+           "AND (s.readingStatus IN :statuses OR (:includeNull = true AND s.readingStatus IS NULL))")
+    int repairReadingStatusForUser(@Param("user") User user,
+                                   @Param("statuses") Collection<ReadingStatus> statuses,
+                                   @Param("includeNull") boolean includeNull);
 }

@@ -1,5 +1,6 @@
 package com.moksha.storyvault.service.impl;
 
+import com.moksha.storyvault.dto.PagedApiResponse;
 import com.moksha.storyvault.dto.PersonalNoteResponse;
 import com.moksha.storyvault.dto.ReadingHistoryStats;
 import com.moksha.storyvault.dto.StoryPublicResponse;
@@ -43,7 +44,9 @@ import org.springframework.util.StringUtils;
 
 import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Comparator;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -127,9 +130,44 @@ public class StoryServiceImpl implements StoryService {
     @Override
     public List<StoryResponse> findAll() {
         User user = securityUtils.currentUser();
-        return storyRepository.findAllWithTagsByUser(user).stream()
-                .map(this::toResponse)
+        List<Story> stories = storyRepository.findAllWithTagsByUser(user);
+        if (stories.isEmpty()) return List.of();
+        List<Long> storyIds = stories.stream().map(Story::getId).collect(Collectors.toList());
+        Map<Long, ReadingHistoryStats> statsMap = readingHistoryRepository.findStatsByStoryIds(storyIds)
+                .stream()
+                .collect(Collectors.toMap(ReadingHistoryStats::getStoryId, s -> s));
+        return stories.stream()
+                .map(s -> toResponse(s, statsMap.get(s.getId())))
                 .collect(Collectors.toList());
+    }
+
+    @Override
+    public PagedApiResponse<StoryResponse> findAllPaged(int page, int size) {
+        User user = securityUtils.currentUser();
+        org.springframework.data.domain.Page<Long> idPage =
+                storyRepository.findPagedIdsByUser(user, org.springframework.data.domain.PageRequest.of(page, size));
+
+        List<Long> ids = idPage.getContent();
+        if (ids.isEmpty()) {
+            return PagedApiResponse.success("Stories retrieved", List.of(),
+                    idPage.getTotalElements(), idPage.getTotalPages(), page, size);
+        }
+
+        List<Story> stories = storyRepository.findByIdsWithTags(ids);
+        Map<Long, Integer> position = new HashMap<>();
+        for (int i = 0; i < ids.size(); i++) position.put(ids.get(i), i);
+        stories.sort(Comparator.comparingInt(s -> position.getOrDefault(s.getId(), Integer.MAX_VALUE)));
+
+        Map<Long, ReadingHistoryStats> statsMap = readingHistoryRepository.findStatsByStoryIds(ids)
+                .stream()
+                .collect(Collectors.toMap(ReadingHistoryStats::getStoryId, s -> s));
+
+        List<StoryResponse> responses = stories.stream()
+                .map(s -> toResponse(s, statsMap.get(s.getId())))
+                .collect(Collectors.toList());
+
+        return PagedApiResponse.success("Stories retrieved", responses,
+                idPage.getTotalElements(), idPage.getTotalPages(), page, size);
     }
 
     @Override
@@ -276,6 +314,23 @@ public class StoryServiceImpl implements StoryService {
         story.setPersonalNoteCreatedAt(null);
         story.setPersonalNoteUpdatedAt(null);
         storyRepository.save(story);
+    }
+
+    @Override
+    @Transactional
+    public void setLastReadDate(Long storyId, LocalDateTime at) {
+        storyRepository.findById(storyId).ifPresent(story -> {
+            story.setLastAccessedAt(at);
+            storyRepository.save(story);
+        });
+    }
+
+    @Override
+    @Transactional
+    public int repairReadingStatus(boolean force) {
+        User user = securityUtils.currentUser();
+        Collection<ReadingStatus> toFix = List.of(ReadingStatus.STILL_READING, ReadingStatus.CAUGHT_UP);
+        return storyRepository.repairReadingStatusForUser(user, toFix, force);
     }
 
     // ── Search ────────────────────────────────────────────────────────────────
@@ -645,7 +700,15 @@ public class StoryServiceImpl implements StoryService {
             return;
         }
 
-        // Start reading on first automatic visit
+        // If the work is confirmed complete (via import metadata or chapter ratio), finish it.
+        // REREADING is intentional — preserve it even for complete works.
+        StoryStatus effectiveStatus = request.getStatus() != null ? request.getStatus() : story.getStatus();
+        if (StoryStatus.COMPLETE.equals(effectiveStatus) && current != ReadingStatus.REREADING) {
+            story.setReadingStatus(ReadingStatus.FINISHED_READING);
+            return;
+        }
+
+        // Start reading on first automatic visit (only for incomplete/unknown works)
         if (current == null || current == ReadingStatus.WANT_TO_READ) {
             story.setReadingStatus(ReadingStatus.STILL_READING);
         }
@@ -698,7 +761,11 @@ public class StoryServiceImpl implements StoryService {
                 .ao3UpdatedDate(request.getAo3UpdatedDate())
                 .language(request.getLanguage())
                 .completedAt(request.getCompletedAt())
-                .readingStatus(request.getReadingStatus())
+                .readingStatus(
+                    request.getReadingStatus() != null ? request.getReadingStatus() :
+                    StoryStatus.COMPLETE.equals(request.getStatus()) ? ReadingStatus.FINISHED_READING :
+                    null
+                )
                 .currentChapter(request.getCurrentChapter())
                 .currentChapterUrl(request.getCurrentChapterUrl())
                 .kudosStatus(request.getKudosStatus() != null ? request.getKudosStatus() : KudosStatus.UNKNOWN)
@@ -842,7 +909,7 @@ public class StoryServiceImpl implements StoryService {
                 .characters(story.getCharacters() != null ? List.copyOf(story.getCharacters()) : List.of())
                 .archiveWarnings(story.getArchiveWarnings() != null ? List.copyOf(story.getArchiveWarnings()) : List.of())
                 .categories(story.getCategories() != null ? List.copyOf(story.getCategories()) : List.of())
-                .hasFile(story.getStoryFile() != null)
+                .hasFile(story.isHasFile())
                 .readingStatus(story.getReadingStatus())
                 .currentChapter(story.getCurrentChapter())
                 .currentChapterUrl(story.getCurrentChapterUrl())

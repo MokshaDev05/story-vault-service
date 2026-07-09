@@ -60,6 +60,8 @@ public class StoryFileServiceImpl implements StoryFileService {
                 .build();
 
         storyFileRepository.save(storyFile);
+        story.setHasFile(true);
+        storyRepository.save(story);
         log.info("Uploaded file '{}' for story id: {}", filename, storyId);
     }
 
@@ -85,13 +87,15 @@ public class StoryFileServiceImpl implements StoryFileService {
     @Transactional
     public void delete(Long storyId) {
         var user = securityUtils.currentUser();
-        storyRepository.findByIdAndUser(storyId, user)
+        var story = storyRepository.findByIdAndUser(storyId, user)
                 .orElseThrow(() -> new StoryNotFoundException(storyId));
 
         StoryFile storyFile = storyFileRepository.findByStoryId(storyId)
                 .orElseThrow(() -> new StoryFileNotFoundException(storyId));
 
         storyFileRepository.delete(storyFile);
+        story.setHasFile(false);
+        storyRepository.save(story);
         log.info("Deleted file for story id: {}", storyId);
     }
 }

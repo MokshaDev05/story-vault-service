@@ -3,6 +3,7 @@ package com.moksha.storyvault.controller;
 import com.moksha.storyvault.dto.ApiResponse;
 import com.moksha.storyvault.dto.LabelResponse;
 import com.moksha.storyvault.dto.NoteRequest;
+import com.moksha.storyvault.dto.PagedApiResponse;
 import com.moksha.storyvault.dto.PersonalNoteRequest;
 import com.moksha.storyvault.dto.PersonalNoteResponse;
 import com.moksha.storyvault.dto.StoryRequest;
@@ -21,6 +22,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
+import java.util.Map;
 
 @RestController
 @RequestMapping("/api/v1/stories")
@@ -50,8 +52,10 @@ public class StoryController {
     }
 
     @GetMapping
-    public ResponseEntity<ApiResponse<List<StoryResponse>>> findAll() {
-        return ResponseEntity.ok(ApiResponse.success("Stories retrieved", storyService.findAll()));
+    public ResponseEntity<PagedApiResponse<StoryResponse>> findAll(
+            @RequestParam(defaultValue = "0")  int page,
+            @RequestParam(defaultValue = "50") int size) {
+        return ResponseEntity.ok(storyService.findAllPaged(page, Math.min(size, 200)));
     }
 
     @PostMapping("/search")
@@ -118,6 +122,15 @@ public class StoryController {
     public ResponseEntity<ApiResponse<Void>> delete(@PathVariable Long id) {
         storyService.delete(id);
         return ResponseEntity.ok(ApiResponse.success("Story deleted"));
+    }
+
+    @PostMapping("/repair/reading-status")
+    public ResponseEntity<ApiResponse<Map<String, Integer>>> repairReadingStatus(
+            @RequestParam(defaultValue = "false") boolean force) {
+        int count = storyService.repairReadingStatus(force);
+        return ResponseEntity.ok(ApiResponse.success(
+                "Repaired reading status on " + count + " stories",
+                Map.of("repaired", count)));
     }
 
     @PostMapping("/{storyId}/labels/{labelId}")

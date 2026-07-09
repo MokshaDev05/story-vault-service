@@ -112,24 +112,28 @@ public class Story {
     @ElementCollection(fetch = FetchType.LAZY)
     @CollectionTable(name = "story_relationships", joinColumns = @JoinColumn(name = "story_id"))
     @Column(name = "relationship", length = 500)
+    @BatchSize(size = 50)
     @Builder.Default
     private List<String> relationships = new ArrayList<>();
 
     @ElementCollection(fetch = FetchType.LAZY)
     @CollectionTable(name = "story_characters", joinColumns = @JoinColumn(name = "story_id"))
     @Column(name = "character_name", length = 500)
+    @BatchSize(size = 50)
     @Builder.Default
     private List<String> characters = new ArrayList<>();
 
     @ElementCollection(fetch = FetchType.LAZY)
     @CollectionTable(name = "story_warnings", joinColumns = @JoinColumn(name = "story_id"))
     @Column(name = "warning", length = 500)
+    @BatchSize(size = 50)
     @Builder.Default
     private List<String> archiveWarnings = new ArrayList<>();
 
     @ElementCollection(fetch = FetchType.LAZY)
     @CollectionTable(name = "story_categories", joinColumns = @JoinColumn(name = "story_id"))
     @Column(name = "category", length = 100)
+    @BatchSize(size = 50)
     @Builder.Default
     private List<String> categories = new ArrayList<>();
 
@@ -151,6 +155,10 @@ public class Story {
 
     @OneToOne(mappedBy = "story", cascade = CascadeType.ALL, orphanRemoval = true)
     private StoryFile storyFile;
+
+    @Column(name = "has_file", nullable = false)
+    @Builder.Default
+    private boolean hasFile = false;
 
     @Enumerated(EnumType.STRING)
     @Column(name = "reading_status", length = 50)
