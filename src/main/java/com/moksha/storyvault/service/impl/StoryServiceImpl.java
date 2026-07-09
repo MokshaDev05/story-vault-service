@@ -31,12 +31,18 @@ import com.moksha.storyvault.repository.TagRepository;
 import com.moksha.storyvault.security.SecurityUtils;
 import com.moksha.storyvault.service.StoryService;
 import com.moksha.storyvault.service.TimelineService;
+import com.moksha.storyvault.model.Label;
+import com.moksha.storyvault.model.ReadingHistory;
+import jakarta.persistence.criteria.Join;
 import jakarta.persistence.criteria.JoinType;
 import jakarta.persistence.criteria.Predicate;
 import jakarta.persistence.criteria.Root;
 import jakarta.persistence.criteria.Subquery;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Sort;
 import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -144,8 +150,8 @@ public class StoryServiceImpl implements StoryService {
     @Override
     public PagedApiResponse<StoryResponse> findAllPaged(int page, int size) {
         User user = securityUtils.currentUser();
-        org.springframework.data.domain.Page<Long> idPage =
-                storyRepository.findPagedIdsByUser(user, org.springframework.data.domain.PageRequest.of(page, size));
+        Page<Long> idPage =
+                storyRepository.findPagedIdsByUser(user, PageRequest.of(page, size));
 
         List<Long> ids = idPage.getContent();
         if (ids.isEmpty()) {
@@ -369,23 +375,14 @@ public class StoryServiceImpl implements StoryService {
     }
 
     @Override
-    public List<StoryResponse> advancedSearch(StorySearchRequest req) {
+    public PagedApiResponse<StoryResponse> advancedSearch(StorySearchRequest req, int page, int size) {
         User user = securityUtils.currentUser();
-
-        // Pre-filter: story IDs that have a specific chapter accessed
-        Set<Long> chapterPreFilter = null;
-        if (req.getChapterAccessed() != null) {
-            List<Long> ids = readingHistoryRepository.findStoryIdsWithChapterAccessed(
-                    user, req.getChapterAccessed());
-            if (ids.isEmpty()) return List.of();
-            chapterPreFilter = new HashSet<>(ids);
-        }
-        final Set<Long> finalChapterFilter = chapterPreFilter;
 
         Specification<Story> spec = (root, query, cb) -> {
             List<Predicate> predicates = new ArrayList<>();
             predicates.add(cb.equal(root.get("user"), user));
 
+            // ── Scalar field predicates ───────────────────────────────────────
             if (StringUtils.hasText(req.getTitleContains()))
                 predicates.add(cb.like(cb.lower(root.get("title")),
                         "%" + req.getTitleContains().toLowerCase() + "%"));
@@ -406,7 +403,6 @@ public class StoryServiceImpl implements StoryService {
             if (StringUtils.hasText(req.getLanguage()))
                 predicates.add(cb.like(cb.lower(root.get("language")),
                         "%" + req.getLanguage().toLowerCase() + "%"));
-
             if (req.getMinWordCount() != null)
                 predicates.add(cb.greaterThanOrEqualTo(root.get("wordCount"), req.getMinWordCount()));
             if (req.getMaxWordCount() != null)
@@ -415,7 +411,6 @@ public class StoryServiceImpl implements StoryService {
                 predicates.add(cb.greaterThanOrEqualTo(root.get("chapterCount"), req.getMinChapters()));
             if (req.getMaxChapters() != null)
                 predicates.add(cb.lessThanOrEqualTo(root.get("chapterCount"), req.getMaxChapters()));
-
             if (req.getPublishedAfter() != null)
                 predicates.add(cb.greaterThanOrEqualTo(root.get("ao3PublishedDate"), req.getPublishedAfter()));
             if (req.getPublishedBefore() != null)
@@ -424,62 +419,76 @@ public class StoryServiceImpl implements StoryService {
                 predicates.add(cb.greaterThanOrEqualTo(root.get("ao3UpdatedDate"), req.getUpdatedAfter()));
             if (req.getUpdatedBefore() != null)
                 predicates.add(cb.lessThanOrEqualTo(root.get("ao3UpdatedDate"), req.getUpdatedBefore()));
-
             if (req.getLastAccessedAfter() != null)
                 predicates.add(cb.greaterThanOrEqualTo(root.get("lastAccessedAt"),
                         req.getLastAccessedAfter().atStartOfDay()));
             if (req.getLastAccessedBefore() != null)
                 predicates.add(cb.lessThanOrEqualTo(root.get("lastAccessedAt"),
                         req.getLastAccessedBefore().atTime(23, 59, 59)));
-
-            if (StringUtils.hasText(req.getTagContains())) {
-                query.distinct(true);
-                var tagJoin = root.join("tags", JoinType.LEFT);
-                predicates.add(cb.like(cb.lower(tagJoin.get("name")),
-                        "%" + req.getTagContains().toLowerCase() + "%"));
-            }
-            if (StringUtils.hasText(req.getRelationshipContains())) {
-                query.distinct(true);
-                var relJoin = root.join("relationships", JoinType.LEFT);
-                predicates.add(cb.like(cb.lower(relJoin.as(String.class)),
-                        "%" + req.getRelationshipContains().toLowerCase() + "%"));
-            }
-            if (StringUtils.hasText(req.getCharacterContains())) {
-                query.distinct(true);
-                var charJoin = root.join("characters", JoinType.LEFT);
-                predicates.add(cb.like(cb.lower(charJoin.as(String.class)),
-                        "%" + req.getCharacterContains().toLowerCase() + "%"));
-            }
-
-            if (req.getCollectionId() != null) {
-                query.distinct(true);
-                var colJoin = root.join("collections", JoinType.INNER);
-                predicates.add(cb.equal(colJoin.get("id"), req.getCollectionId()));
-                predicates.add(cb.equal(colJoin.get("user"), user));
-            }
-
             if (StringUtils.hasText(req.getNoteContains()))
                 predicates.add(cb.like(cb.lower(root.get("personalNotes")),
                         "%" + req.getNoteContains().toLowerCase() + "%"));
             if (req.getHasNote() != null) {
-                if (Boolean.TRUE.equals(req.getHasNote())) {
-                    predicates.add(cb.isNotNull(root.get("personalNotes")));
-                } else {
-                    predicates.add(cb.isNull(root.get("personalNotes")));
-                }
+                predicates.add(Boolean.TRUE.equals(req.getHasNote())
+                        ? cb.isNotNull(root.get("personalNotes"))
+                        : cb.isNull(root.get("personalNotes")));
             }
 
+            // ── EXISTS subqueries (replace JOIN + DISTINCT) ───────────────────
+
+            if (StringUtils.hasText(req.getTagContains())) {
+                Subquery<Long> sub = query.subquery(Long.class);
+                Root<Story> sr = sub.correlate(root);
+                Join<Story, Tag> j = sr.join("tags");
+                sub.select(cb.literal(1L))
+                   .where(cb.like(cb.lower(j.get("name")),
+                           "%" + req.getTagContains().toLowerCase() + "%"));
+                predicates.add(cb.exists(sub));
+            }
+            if (StringUtils.hasText(req.getRelationshipContains())) {
+                Subquery<String> sub = query.subquery(String.class);
+                Root<Story> sr = sub.correlate(root);
+                Join<Story, String> j = sr.join("relationships");
+                sub.select(j.as(String.class))
+                   .where(cb.like(cb.lower(j.as(String.class)),
+                           "%" + req.getRelationshipContains().toLowerCase() + "%"));
+                predicates.add(cb.exists(sub));
+            }
+            if (StringUtils.hasText(req.getCharacterContains())) {
+                Subquery<String> sub = query.subquery(String.class);
+                Root<Story> sr = sub.correlate(root);
+                Join<Story, String> j = sr.join("characters");
+                sub.select(j.as(String.class))
+                   .where(cb.like(cb.lower(j.as(String.class)),
+                           "%" + req.getCharacterContains().toLowerCase() + "%"));
+                predicates.add(cb.exists(sub));
+            }
+            if (req.getCollectionId() != null) {
+                Subquery<Long> sub = query.subquery(Long.class);
+                Root<Story> sr = sub.correlate(root);
+                Join<Story, Shelf> j = sr.join("collections");
+                sub.select(cb.literal(1L))
+                   .where(cb.and(cb.equal(j.get("id"), req.getCollectionId()),
+                                 cb.equal(j.get("user"), user)));
+                predicates.add(cb.exists(sub));
+            }
             if (req.getLabelId() != null) {
-                query.distinct(true);
-                var labelJoin = root.join("labels", JoinType.INNER);
-                predicates.add(cb.equal(labelJoin.get("id"), req.getLabelId()));
-                predicates.add(cb.equal(labelJoin.get("user"), user));
+                Subquery<Long> sub = query.subquery(Long.class);
+                Root<Story> sr = sub.correlate(root);
+                Join<Story, Label> j = sr.join("labels");
+                sub.select(cb.literal(1L))
+                   .where(cb.and(cb.equal(j.get("id"), req.getLabelId()),
+                                 cb.equal(j.get("user"), user)));
+                predicates.add(cb.exists(sub));
             }
             if (req.getLabelIds() != null && !req.getLabelIds().isEmpty()) {
-                query.distinct(true);
-                var labelJoin = root.join("labels", JoinType.INNER);
-                predicates.add(labelJoin.get("id").in(req.getLabelIds()));
-                predicates.add(cb.equal(labelJoin.get("user"), user));
+                Subquery<Long> sub = query.subquery(Long.class);
+                Root<Story> sr = sub.correlate(root);
+                Join<Story, Label> j = sr.join("labels");
+                sub.select(cb.literal(1L))
+                   .where(cb.and(j.get("id").in(req.getLabelIds()),
+                                 cb.equal(j.get("user"), user)));
+                predicates.add(cb.exists(sub));
             }
             if (Boolean.TRUE.equals(req.getNoLabels())) {
                 Subquery<Long> sub = query.subquery(Long.class);
@@ -490,52 +499,106 @@ public class StoryServiceImpl implements StoryService {
                 predicates.add(cb.not(cb.exists(sub)));
             }
 
-            if (finalChapterFilter != null)
-                predicates.add(root.get("id").in(finalChapterFilter));
+            // ── Reading history predicates (replaces pre-filter + Java post-filter) ─
+
+            if (req.getChapterAccessed() != null) {
+                Subquery<Long> sub = query.subquery(Long.class);
+                Root<ReadingHistory> h = sub.from(ReadingHistory.class);
+                sub.select(cb.literal(1L))
+                   .where(cb.and(cb.equal(h.get("story"), root),
+                                 cb.equal(h.get("chapterNumber"), req.getChapterAccessed())));
+                predicates.add(cb.exists(sub));
+            }
+            if (req.getFirstAccessedAfter() != null) {
+                Subquery<LocalDateTime> sub = query.subquery(LocalDateTime.class);
+                Root<ReadingHistory> h = sub.from(ReadingHistory.class);
+                sub.select(cb.least(h.<LocalDateTime>get("accessedAt")))
+                   .where(cb.equal(h.get("story"), root));
+                predicates.add(cb.greaterThanOrEqualTo(sub, req.getFirstAccessedAfter().atStartOfDay()));
+            }
+            if (req.getFirstAccessedBefore() != null) {
+                Subquery<LocalDateTime> sub = query.subquery(LocalDateTime.class);
+                Root<ReadingHistory> h = sub.from(ReadingHistory.class);
+                sub.select(cb.least(h.<LocalDateTime>get("accessedAt")))
+                   .where(cb.equal(h.get("story"), root));
+                predicates.add(cb.lessThanOrEqualTo(sub, req.getFirstAccessedBefore().atTime(23, 59, 59)));
+            }
+            if (req.getMinAccessCount() != null) {
+                Subquery<Long> sub = query.subquery(Long.class);
+                Root<ReadingHistory> h = sub.from(ReadingHistory.class);
+                sub.select(cb.count(h))
+                   .where(cb.equal(h.get("story"), root));
+                predicates.add(cb.greaterThanOrEqualTo(sub, (long) req.getMinAccessCount()));
+            }
 
             return cb.and(predicates.toArray(new Predicate[0]));
         };
 
-        List<Story> stories = storyRepository.findAll(spec);
-        if (stories.isEmpty()) return List.of();
+        StorySearchRequest.SortField sortBy = req.getSortBy() != null
+                ? req.getSortBy() : StorySearchRequest.SortField.LAST_ACCESSED;
+        boolean descending  = !"asc".equalsIgnoreCase(req.getSortDir());
+        boolean historySort = sortBy == StorySearchRequest.SortField.FIRST_ACCESSED
+                           || sortBy == StorySearchRequest.SortField.ACCESS_COUNT;
 
-        List<Long> storyIds = stories.stream().map(Story::getId).collect(Collectors.toList());
-        Map<Long, ReadingHistoryStats> statsMap = readingHistoryRepository.findStatsByStoryIds(storyIds)
-                .stream()
-                .collect(Collectors.toMap(ReadingHistoryStats::getStoryId, s -> s));
+        // ── Path A: DB-side pagination (9 of 11 sort fields) ─────────────────
+        if (!historySort) {
+            Page<Story> storyPage = storyRepository.findAll(spec,
+                    PageRequest.of(page, size, buildSort(sortBy, descending)));
 
-        // Post-filter: history aggregate conditions
-        Stream<Story> stream = stories.stream();
-        if (req.getFirstAccessedAfter() != null || req.getFirstAccessedBefore() != null
-                || req.getMinAccessCount() != null) {
-            stream = stream.filter(s -> {
-                ReadingHistoryStats stats = statsMap.get(s.getId());
-                if (req.getMinAccessCount() != null) {
-                    long count = stats != null ? stats.getAccessCount() : 0L;
-                    if (count < req.getMinAccessCount()) return false;
-                }
-                if (req.getFirstAccessedAfter() != null) {
-                    if (stats == null) return false;
-                    if (stats.getFirstAccessedAt().isBefore(req.getFirstAccessedAfter().atStartOfDay())) return false;
-                }
-                if (req.getFirstAccessedBefore() != null) {
-                    if (stats == null) return false;
-                    if (stats.getFirstAccessedAt().isAfter(req.getFirstAccessedBefore().atTime(23, 59, 59))) return false;
-                }
-                return true;
-            });
+            List<Long> pageIds = storyPage.getContent().stream()
+                    .map(Story::getId).collect(Collectors.toList());
+            if (pageIds.isEmpty()) {
+                return PagedApiResponse.success("Search results", List.of(),
+                        storyPage.getTotalElements(), storyPage.getTotalPages(), page, size);
+            }
+            List<Story> hydrated = storyRepository.findByIdsWithTags(pageIds);
+            Map<Long, Integer> pos = new HashMap<>();
+            for (int i = 0; i < pageIds.size(); i++) pos.put(pageIds.get(i), i);
+            hydrated.sort(Comparator.comparingInt(s -> pos.getOrDefault(s.getId(), Integer.MAX_VALUE)));
+
+            Map<Long, ReadingHistoryStats> statsMap =
+                    readingHistoryRepository.findStatsByStoryIds(pageIds).stream()
+                            .collect(Collectors.toMap(ReadingHistoryStats::getStoryId, s -> s));
+
+            List<StoryResponse> responses = hydrated.stream()
+                    .map(s -> toResponse(s, statsMap.get(s.getId())))
+                    .collect(Collectors.toList());
+            return PagedApiResponse.success("Search results", responses,
+                    storyPage.getTotalElements(), storyPage.getTotalPages(), page, size);
         }
 
-        StorySearchRequest.SortField sortBy = req.getSortBy() != null
-                ? req.getSortBy()
-                : StorySearchRequest.SortField.LAST_ACCESSED;
-        boolean descending = !"asc".equalsIgnoreCase(req.getSortDir());
+        // ── Path B: Java sort for FIRST_ACCESSED / ACCESS_COUNT ───────────────
+        List<Story> stories = storyRepository.findAll(spec);
+        if (stories.isEmpty()) {
+            return PagedApiResponse.success("Search results", List.of(), 0, 0, page, size);
+        }
+        List<Long> allIds = stories.stream().map(Story::getId).collect(Collectors.toList());
+        Map<Long, ReadingHistoryStats> statsMap =
+                readingHistoryRepository.findStatsByStoryIds(allIds).stream()
+                        .collect(Collectors.toMap(ReadingHistoryStats::getStoryId, s -> s));
+
         Comparator<Story> comp = buildComparator(sortBy, statsMap);
         if (descending) comp = comp.reversed();
+        List<Story> sorted = stories.stream().sorted(comp).collect(Collectors.toList());
 
-        return stream.sorted(comp)
+        long totalElements = sorted.size();
+        int  totalPages    = (int) Math.max(1, Math.ceil((double) totalElements / size));
+        int  fromIndex     = page * size;
+        if (fromIndex >= totalElements) {
+            return PagedApiResponse.success("Search results", List.of(), totalElements, totalPages, page, size);
+        }
+        List<Long> pageIds = sorted.subList(fromIndex, Math.min(fromIndex + size, sorted.size()))
+                .stream().map(Story::getId).collect(Collectors.toList());
+
+        List<Story> hydrated = storyRepository.findByIdsWithTags(pageIds);
+        Map<Long, Integer> pos = new HashMap<>();
+        for (int i = 0; i < pageIds.size(); i++) pos.put(pageIds.get(i), i);
+        hydrated.sort(Comparator.comparingInt(s -> pos.getOrDefault(s.getId(), Integer.MAX_VALUE)));
+
+        List<StoryResponse> responses = hydrated.stream()
                 .map(s -> toResponse(s, statsMap.get(s.getId())))
                 .collect(Collectors.toList());
+        return PagedApiResponse.success("Search results", responses, totalElements, totalPages, page, size);
     }
 
     private Comparator<Story> buildComparator(StorySearchRequest.SortField sortBy,
@@ -566,6 +629,22 @@ public class StoryServiceImpl implements StoryService {
             default -> Comparator.comparing(Story::getLastAccessedAt,
                     Comparator.nullsLast(Comparator.naturalOrder()));
         };
+    }
+
+    private Sort buildSort(StorySearchRequest.SortField sortBy, boolean descending) {
+        String prop = switch (sortBy) {
+            case TITLE              -> "title";
+            case AUTHOR             -> "author";
+            case FANDOM             -> "fandom";
+            case WORD_COUNT         -> "wordCount";
+            case CHAPTER_COUNT      -> "chapterCount";
+            case AO3_PUBLISHED_DATE -> "ao3PublishedDate";
+            case AO3_UPDATED_DATE   -> "ao3UpdatedDate";
+            case CREATED_AT         -> "createdAt";
+            default                 -> "lastAccessedAt";
+        };
+        Sort.Order order = (descending ? Sort.Order.desc(prop) : Sort.Order.asc(prop)).nullsLast();
+        return Sort.by(order);
     }
 
     @Override
