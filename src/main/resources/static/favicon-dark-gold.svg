@@ -1,13 +1,9 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
-  <!-- Open book: left page, spine (taller), right page -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="32" height="32">
   <rect x="1"  y="6" width="11" height="20" rx=".5" fill="#151210" stroke="#a08845" stroke-width="1.25"/>
   <rect x="12" y="4" width="8"  height="24" rx=".5" fill="#151210" stroke="#a08845" stroke-width="1.25"/>
   <rect x="20" y="6" width="11" height="20" rx=".5" fill="#151210" stroke="#a08845" stroke-width="1.25"/>
-  <!-- Vault wheel: outer ring (covers book spine, is the primary element) -->
   <circle cx="16" cy="16" r="7.5" fill="#151210" stroke="#a08845" stroke-width="1.5"/>
-  <!-- Inner decorative ring (Art Deco double-wheel detail) -->
-  <circle cx="16" cy="16" r="4.5" fill="none"    stroke="#a08845" stroke-width=".75"/>
-  <!-- 6 spokes at 30°, 90°, 150°, 210°, 270°, 330° from 12 o'clock -->
+  <circle cx="16" cy="16" r="4.5" fill="none" stroke="#a08845" stroke-width=".75"/>
   <g stroke="#a08845" stroke-width="1.3" stroke-linecap="round">
     <line x1="16" y1="16" x2="19.75" y2="9.5"/>
     <line x1="16" y1="16" x2="23.5"  y2="16"/>
@@ -16,6 +12,5 @@
     <line x1="16" y1="16" x2="8.5"   y2="16"/>
     <line x1="16" y1="16" x2="12.25" y2="9.5"/>
   </g>
-  <!-- Hub -->
   <circle cx="16" cy="16" r="2.5" fill="#a08845"/>
 </svg>

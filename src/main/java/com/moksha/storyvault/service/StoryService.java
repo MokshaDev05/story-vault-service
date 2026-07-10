@@ -33,7 +33,7 @@ public interface StoryService {
 
     List<StoryResponse> search(String fandom, Platform platform, StoryStatus status, Rating rating, String tag);
 
-    List<StoryResponse> advancedSearch(StorySearchRequest request);
+    PagedApiResponse<StoryResponse> advancedSearch(StorySearchRequest request, int page, int size);
 
     StoryPublicResponse getPublicView(Long id);
 

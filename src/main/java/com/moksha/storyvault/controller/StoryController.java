@@ -59,10 +59,11 @@ public class StoryController {
     }
 
     @PostMapping("/search")
-    public ResponseEntity<ApiResponse<List<StoryResponse>>> advancedSearch(
-            @RequestBody StorySearchRequest request) {
-        return ResponseEntity.ok(ApiResponse.success("Search results",
-                storyService.advancedSearch(request)));
+    public ResponseEntity<PagedApiResponse<StoryResponse>> advancedSearch(
+            @RequestBody StorySearchRequest request,
+            @RequestParam(defaultValue = "0")  int page,
+            @RequestParam(defaultValue = "50") int size) {
+        return ResponseEntity.ok(storyService.advancedSearch(request, page, Math.min(size, 100)));
     }
 
     // /search must be declared before /{id} so Spring matches the literal first

@@ -33,6 +33,7 @@ public class ImportEntryProcessor {
         if (entry.getHistoryAccessDate() != null) {
             LocalDateTime accessedAt = entry.getHistoryAccessDate().atTime(12, 0);
             readingHistoryService.logImported(result.story().getId(), accessedAt);
+            storyService.setLastReadDate(result.story().getId(), accessedAt);
         }
         return result;
     }

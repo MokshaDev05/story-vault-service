@@ -28,6 +28,20 @@ let showToast     = true;
 let showKudos     = true;
 let showChips     = true;
 
+// ─── Pagination state ─────────────────────────────────────────────────────────
+let _displayPage   = 0;
+let _pageSize      = 50;
+let _totalElements = 0;
+let _totalPages    = 1;
+let _bgLoading     = false;
+let _bgAbort       = null;
+// Advanced search (server-paged)
+let _advResults       = [];
+let _advPage          = 0;
+let _advTotalPages    = 1;
+let _advTotalElements = 0;
+let _advLastReq       = null;
+
 // ─── Init ─────────────────────────────────────────────────────────────────────
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -84,8 +98,18 @@ function startImportWatcher() {
       const body = await res.json();
       const jobs = body.data || [];
       const running = jobs.find(j => j.status === 'RUNNING' || j.status === 'PENDING');
-      if (!running) { stopImportWatcher(); return; }
-      fetchStories();
+      if (!running) {
+        stopImportWatcher();
+        fetchStories(); // Full reload only when import finishes
+        return;
+      }
+      // During import: update count display without reloading the library
+      const latestJob = jobs[0];
+      if (latestJob && latestJob.processedCount != null) {
+        const countEl = el('story-count');
+        countEl.textContent = `Importing… ${latestJob.processedCount.toLocaleString()} works added so far`;
+        countEl.classList.remove('hidden');
+      }
     } catch { /* ignore */ }
   }
 
@@ -95,6 +119,45 @@ function startImportWatcher() {
 
 function stopImportWatcher() {
   if (_importWatcherTimer) { clearInterval(_importWatcherTimer); _importWatcherTimer = null; }
+}
+
+// ─── Favicon ─────────────────────────────────────────────────────────────────
+
+const _FAVICON_COLORS = {
+  'light-gold':   ['#a07840', '#eae5da'],
+  'light-silver': ['#8c9298', '#e4e8ec'],
+  'light-rose':   ['#a87068', '#ede6e2'],
+  'dark-gold':    ['#a08845', '#151210'],
+  'dark-silver':  ['#7a8088', '#121416'],
+  'dark-rose':    ['#986058', '#141212'],
+};
+
+function buildFaviconSVG(metal, theme) {
+  const [m, bg] = _FAVICON_COLORS[`${theme}-${metal}`] || _FAVICON_COLORS['dark-gold'];
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">` +
+    `<rect x="1" y="6" width="11" height="20" rx=".5" fill="${bg}" stroke="${m}" stroke-width="1.25"/>` +
+    `<rect x="12" y="4" width="8" height="24" rx=".5" fill="${bg}" stroke="${m}" stroke-width="1.25"/>` +
+    `<rect x="20" y="6" width="11" height="20" rx=".5" fill="${bg}" stroke="${m}" stroke-width="1.25"/>` +
+    `<circle cx="16" cy="16" r="7.5" fill="${bg}" stroke="${m}" stroke-width="1.5"/>` +
+    `<circle cx="16" cy="16" r="4.5" fill="none" stroke="${m}" stroke-width=".75"/>` +
+    `<g stroke="${m}" stroke-width="1.3" stroke-linecap="round">` +
+    `<line x1="16" y1="16" x2="19.75" y2="9.5"/>` +
+    `<line x1="16" y1="16" x2="23.5" y2="16"/>` +
+    `<line x1="16" y1="16" x2="19.75" y2="22.5"/>` +
+    `<line x1="16" y1="16" x2="12.25" y2="22.5"/>` +
+    `<line x1="16" y1="16" x2="8.5" y2="16"/>` +
+    `<line x1="16" y1="16" x2="12.25" y2="9.5"/>` +
+    `</g>` +
+    `<circle cx="16" cy="16" r="2.5" fill="${m}"/>` +
+    `</svg>`;
+}
+
+function updateFavicon() {
+  const theme = document.documentElement.dataset.theme || 'light';
+  const metal = document.documentElement.dataset.metal || 'gold';
+  const link  = document.getElementById('favicon-link') ||
+                document.querySelector("link[rel~='icon']");
+  if (link) link.href = 'data:image/svg+xml,' + encodeURIComponent(buildFaviconSVG(metal, theme));
 }
 
 // ─── Theme ────────────────────────────────────────────────────────────────────
@@ -109,6 +172,7 @@ function toggleTheme() {
   document.documentElement.dataset.theme = next;
   localStorage.setItem('sv_theme', next);
   updateSettingsPage();
+  updateFavicon();
 }
 
 // ─── Metal ────────────────────────────────────────────────────────────────────
@@ -123,6 +187,7 @@ function setMetal(metal, save = true) {
   document.querySelectorAll('.metal-btn').forEach(btn => {
     btn.classList.toggle('active', btn.dataset.metal === metal);
   });
+  updateFavicon();
 }
 
 // ─── Density ──────────────────────────────────────────────────────────────────
@@ -344,6 +409,9 @@ function logout() {
   vaultOpen = false;
   dataLoaded = false;
   currentView = 'library';
+  _displayPage = 0; _totalElements = 0; _totalPages = 1;
+  _advResults = []; _advPage = 0; _advTotalPages = 1; _advTotalElements = 0; _advLastReq = null;
+  if (_bgAbort) { _bgAbort.abort(); _bgAbort = null; } _bgLoading = false;
   closeNavDrawer();
   el('cards-grid').innerHTML = '';
   const headerUser = el('header-username');
@@ -358,23 +426,191 @@ function handleUnauthorized() {
 // ─── Data ─────────────────────────────────────────────────────────────────────
 
 async function fetchStories() {
+  _displayPage = 0;
+  allStories = [];
+  if (_bgAbort) { _bgAbort.abort(); _bgAbort = null; }
+  _bgLoading = false;
+
   el('loading-state').classList.remove('hidden');
   el('fetch-error').classList.add('hidden');
   el('empty-state').classList.add('hidden');
   el('story-count').classList.add('hidden');
+  el('pagination-controls').classList.add('hidden');
   el('cards-grid').innerHTML = '';
 
   try {
-    const res = await fetch(`${API}/stories`, {
-      headers: { Authorization: `Bearer ${token}` },
-    });
-
-    if (res.status === 401) { handleUnauthorized(); return; }
-
-    const body = await res.json();
+    const body = await _fetchStoriesPage(0);
     allStories = body.data || [];
+    _totalElements = body.totalElements || 0;
+    _totalPages    = body.totalPages    || 1;
     el('loading-state').classList.add('hidden');
     applyFilters();
+    _loadAllInBackground();
+  } catch {
+    el('loading-state').classList.add('hidden');
+    el('fetch-error').classList.remove('hidden');
+  }
+}
+
+async function _fetchStoriesPage(page) {
+  const res = await fetch(`${API}/stories?page=${page}&size=50`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (res.status === 401) { handleUnauthorized(); throw new Error('Unauthorized'); }
+  const body = await res.json();
+  if (!res.ok) throw new Error(body.message || `HTTP ${res.status}`);
+  return body;
+}
+
+async function _loadAllInBackground() {
+  if (_bgLoading || _totalPages <= 1) return;
+  _bgLoading = true;
+  const ctrl = new AbortController();
+  _bgAbort = ctrl;
+  try {
+    for (let p = 1; p < _totalPages; p++) {
+      if (ctrl.signal.aborted) break;
+      const res = await fetch(`${API}/stories?page=${p}&size=50`, {
+        headers: { Authorization: `Bearer ${token}` },
+        signal: ctrl.signal,
+      });
+      if (res.status === 401) { handleUnauthorized(); break; }
+      if (!res.ok) break;
+      const body = await res.json();
+      allStories = [...allStories, ...(body.data || [])];
+      _totalPages = body.totalPages || _totalPages;
+      if (!advancedMode && _bgAbort === ctrl) _silentPaginationUpdate();
+    }
+  } catch { /* aborted or network error */ }
+  finally { if (_bgAbort === ctrl) { _bgLoading = false; _bgAbort = null; } }
+}
+
+function _silentPaginationUpdate() {
+  const list = _buildList();
+  updateCount(list.length, false);
+  _renderPagination(list.length);
+}
+
+function _buildList() {
+  if (advancedMode) return _advResults;
+
+  const search      = el('search-input').value.toLowerCase().trim();
+  const platform    = el('filter-platform').value;
+  const status      = el('filter-status').value;
+  const kudos       = el('filter-kudos').value;
+  const collFilter  = el('filter-collection').value;
+  const labelFilter = el('filter-label') ? el('filter-label').value : '';
+
+  let list = allStories;
+
+  if (search) {
+    list = list.filter(s =>
+      s.title.toLowerCase().includes(search)  ||
+      s.author.toLowerCase().includes(search) ||
+      s.fandom.toLowerCase().includes(search) ||
+      (s.tags          || []).some(t => t.toLowerCase().includes(search)) ||
+      (s.relationships || []).some(r => r.toLowerCase().includes(search)) ||
+      (s.characters    || []).some(c => c.toLowerCase().includes(search)) ||
+      (s.personalNotes || '').toLowerCase().includes(search) ||
+      (s.labels        || []).some(l => l.name.toLowerCase().includes(search))
+    );
+  }
+  if (platform) list = list.filter(s => s.platform === platform);
+  if (status)   list = list.filter(s => s.status   === status);
+  if (kudos === 'GIVEN')     list = list.filter(s => s.kudosStatus === 'GIVEN');
+  if (kudos === 'NOT_GIVEN') list = list.filter(s => s.kudosStatus !== 'GIVEN');
+  if (collFilter) list = list.filter(s =>
+    (s.collections || []).some(c => String(c.id) === collFilter));
+  if (labelFilter) list = list.filter(s =>
+    (s.labels || []).some(l => String(l.id) === labelFilter));
+
+  if (quickFilters.author)
+    list = list.filter(s => s.author.toLowerCase() === quickFilters.author.toLowerCase());
+  if (quickFilters.fandom)
+    list = list.filter(s => s.fandom.toLowerCase() === quickFilters.fandom.toLowerCase());
+  if (quickFilters.tag)
+    list = list.filter(s => (s.tags || []).some(t => t.toLowerCase() === quickFilters.tag.toLowerCase()));
+  if (quickFilters.relationship)
+    list = list.filter(s => (s.relationships || []).some(r => r.toLowerCase() === quickFilters.relationship.toLowerCase()));
+
+  return list;
+}
+
+function _showPage() {
+  if (advancedMode) {
+    renderCards(_advResults);
+    updateCount(_advTotalElements, true);
+    renderQuickFilterChips();
+    _renderPagination(_advTotalElements);
+    return;
+  }
+  const list  = _buildList();
+  const start = _displayPage * _pageSize;
+  const slice = list.slice(start, start + _pageSize);
+  renderCards(slice);
+  updateCount(list.length, false);
+  renderQuickFilterChips();
+  _renderPagination(list.length);
+}
+
+async function _goToPage(n) {
+  if (advancedMode) {
+    const clamped = Math.max(0, Math.min(n, _advTotalPages - 1));
+    await _fetchAdvancedPage(clamped);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+    return;
+  }
+  const list       = _buildList();
+  const totalPages = Math.max(1, Math.ceil(list.length / _pageSize));
+  _displayPage = Math.max(0, Math.min(n, totalPages - 1));
+  _showPage();
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+function _renderPagination(totalFiltered) {
+  const controls = el('pagination-controls');
+  let totalPages, curPage;
+  if (advancedMode) {
+    totalPages = _advTotalPages;
+    curPage    = _advPage;
+  } else {
+    totalPages = Math.max(1, Math.ceil(totalFiltered / _pageSize));
+    curPage    = _displayPage;
+  }
+  if (totalFiltered === 0 || totalPages <= 1) {
+    controls.classList.add('hidden');
+    return;
+  }
+  controls.classList.remove('hidden');
+  el('pg-info').textContent = `Page ${curPage + 1} of ${totalPages}`;
+  el('pg-prev').disabled    = curPage === 0;
+  el('pg-next').disabled    = curPage >= totalPages - 1;
+  el('pg-jump').value       = '';
+  el('pg-jump').setAttribute('max', totalPages);
+  document.querySelectorAll('.pg-size-btn').forEach(btn => {
+    btn.classList.toggle('active', Number(btn.dataset.size) === _pageSize);
+  });
+}
+
+async function _fetchAdvancedPage(page) {
+  if (!_advLastReq) return;
+  el('loading-state').classList.remove('hidden');
+  el('cards-grid').innerHTML = '';
+  el('pagination-controls').classList.add('hidden');
+  try {
+    const res = await fetch(`${API}/stories/search?page=${page}&size=${_pageSize}`, {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body:    JSON.stringify(_advLastReq),
+    });
+    if (res.status === 401) { handleUnauthorized(); return; }
+    const body = await res.json();
+    _advResults       = body.data          || [];
+    _advPage          = body.page          ?? page;
+    _advTotalPages    = body.totalPages    || 1;
+    _advTotalElements = body.totalElements || 0;
+    el('loading-state').classList.add('hidden');
+    _showPage();
   } catch {
     el('loading-state').classList.add('hidden');
     el('fetch-error').classList.remove('hidden');
@@ -642,63 +878,24 @@ async function confirmDeleteCollectionFromList(id, btn) {
 // ─── Filters ──────────────────────────────────────────────────────────────────
 
 function applyFilters() {
-  if (advancedMode) return;  // advanced search results are already rendered
+  if (advancedMode) return;
+  _displayPage = 0;
+  _showPage();
+}
 
-  const search      = el('search-input').value.toLowerCase().trim();
-  const platform    = el('filter-platform').value;
-  const status      = el('filter-status').value;
-  const kudos       = el('filter-kudos').value;
-  const collFilter  = el('filter-collection').value;
-  const labelFilter = el('filter-label') ? el('filter-label').value : '';
-
-  let list = allStories;
-
-  if (search) {
-    list = list.filter(s =>
-      s.title.toLowerCase().includes(search)  ||
-      s.author.toLowerCase().includes(search) ||
-      s.fandom.toLowerCase().includes(search) ||
-      (s.tags          || []).some(t => t.toLowerCase().includes(search)) ||
-      (s.relationships || []).some(r => r.toLowerCase().includes(search)) ||
-      (s.characters    || []).some(c => c.toLowerCase().includes(search)) ||
-      (s.personalNotes || '').toLowerCase().includes(search) ||
-      (s.labels        || []).some(l => l.name.toLowerCase().includes(search))
-    );
-  }
-  if (platform) list = list.filter(s => s.platform === platform);
-  if (status)   list = list.filter(s => s.status   === status);
-  if (kudos === 'GIVEN')     list = list.filter(s => s.kudosStatus === 'GIVEN');
-  if (kudos === 'NOT_GIVEN') list = list.filter(s => s.kudosStatus !== 'GIVEN');
-  if (collFilter) list = list.filter(s =>
-    (s.collections || []).some(c => String(c.id) === collFilter));
-  if (labelFilter) list = list.filter(s =>
-    (s.labels || []).some(l => String(l.id) === labelFilter));
-
-  if (quickFilters.author)
-    list = list.filter(s => s.author.toLowerCase() === quickFilters.author.toLowerCase());
-  if (quickFilters.fandom)
-    list = list.filter(s => s.fandom.toLowerCase() === quickFilters.fandom.toLowerCase());
-  if (quickFilters.tag)
-    list = list.filter(s => (s.tags || []).some(t => t.toLowerCase() === quickFilters.tag.toLowerCase()));
-  if (quickFilters.relationship)
-    list = list.filter(s => (s.relationships || []).some(r => r.toLowerCase() === quickFilters.relationship.toLowerCase()));
-
-  // Sort by AO3 read date (firstAccessedAt = MIN(ReadingHistory.accessedAt), backfilled from
-  // historyAccessDate during import).  Most recently read first; stories with no read date last,
-  // falling back to vault insertion order.
-  list = [...list].sort((a, b) => {
-    const ta = a.firstAccessedAt ? new Date(a.firstAccessedAt).getTime() : null;
-    const tb = b.firstAccessedAt ? new Date(b.firstAccessedAt).getTime() : null;
-    if (ta === null && tb === null)
-      return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
-    if (ta === null) return 1;
-    if (tb === null) return -1;
-    return tb - ta;
-  });
-
-  renderCards(list);
-  updateCount(list.length, false);
-  renderQuickFilterChips();
+function hasActiveFilters() {
+  return !!(
+    el('search-input').value.trim()                      ||
+    el('filter-platform').value                          ||
+    el('filter-status').value                            ||
+    el('filter-kudos').value                             ||
+    el('filter-collection').value                        ||
+    (el('filter-label') && el('filter-label').value)    ||
+    quickFilters.author                                  ||
+    quickFilters.fandom                                  ||
+    quickFilters.tag                                     ||
+    quickFilters.relationship
+  );
 }
 
 function updateCount(shown, isAdvanced) {
@@ -708,11 +905,13 @@ function updateCount(shown, isAdvanced) {
     countEl.classList.remove('hidden');
     return;
   }
-  const total = allStories.length;
+  const total = _totalElements || allStories.length;
   if (total === 0) { countEl.classList.add('hidden'); return; }
-  countEl.textContent = shown === total
-    ? `${total} ${total === 1 ? 'story' : 'stories'} in your vault`
-    : `Showing ${shown} of ${total} stories`;
+  const loaded = allStories.length;
+  const suffix = loaded < total ? ` (${loaded.toLocaleString()} loaded)` : '';
+  countEl.textContent = shown === loaded
+    ? `${total.toLocaleString()} ${total === 1 ? 'story' : 'stories'} in your vault${suffix}`
+    : `Showing ${shown.toLocaleString()} of ${total.toLocaleString()} stories${suffix}`;
   countEl.classList.remove('hidden');
 }
 
@@ -761,32 +960,17 @@ function buildAdvRequest() {
 
 async function runAdvancedSearch() {
   const req = buildAdvRequest();
+  _advLastReq       = req;
+  _advPage          = 0;
+  _advTotalPages    = 1;
+  _advTotalElements = 0;
+  _advResults       = [];
+  advancedMode      = true;
 
-  el('loading-state').classList.remove('hidden');
   el('fetch-error').classList.add('hidden');
   el('empty-state').classList.add('hidden');
-  el('cards-grid').innerHTML = '';
-
-  try {
-    const res = await fetch(`${API}/stories/search`, {
-      method:  'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-      body:    JSON.stringify(req),
-    });
-    if (res.status === 401) { handleUnauthorized(); return; }
-
-    const body = await res.json();
-    const results = body.data || [];
-
-    el('loading-state').classList.add('hidden');
-    advancedMode = true;
-    renderCards(results);
-    updateCount(results.length, true);
-    updateAdvChips(req);
-  } catch {
-    el('loading-state').classList.add('hidden');
-    el('fetch-error').classList.remove('hidden');
-  }
+  updateAdvChips(req);
+  await _fetchAdvancedPage(0);
 }
 
 function clearAdvancedSearch() {
@@ -804,8 +988,12 @@ function clearAdvancedSearch() {
   el('adv-chips').innerHTML      = '';
   quickFilters = {};
 
-  // Exit advanced mode and show the full library
-  advancedMode = false;
+  advancedMode      = false;
+  _advResults       = [];
+  _advLastReq       = null;
+  _advPage          = 0;
+  _advTotalPages    = 1;
+  _advTotalElements = 0;
   applyFilters();
 }
 
@@ -895,20 +1083,6 @@ function renderCards(stories) {
 
   empty.classList.add('hidden');
   grid.innerHTML = stories.map(cardHTML).join('');
-
-  grid.querySelectorAll('.story-card').forEach(card => {
-    const id   = Number(card.dataset.id);
-    const open = () => { const s = allStories.find(x => x.id === id); if (s) openDetail(s); };
-    card.addEventListener('click', open);
-    card.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); open(); } });
-  });
-
-  grid.querySelectorAll('[data-filter-key]').forEach(btn => {
-    btn.addEventListener('click', e => {
-      e.stopPropagation();
-      setQuickFilter(btn.dataset.filterKey, btn.dataset.filterVal);
-    });
-  });
 }
 
 function cardHTML(s) {
@@ -1704,6 +1878,53 @@ function bindEvents() {
     else if (!el('detail-modal').classList.contains('hidden')) closeDetail();
     else if (!el('add-modal').classList.contains('hidden')) closeAddModal();
     else if (vaultOpen) closeVault();
+  });
+
+  // Single delegated listeners for the cards grid — covers all cards past and future.
+  const grid = el('cards-grid');
+  grid.addEventListener('click', e => {
+    const filterBtn = e.target.closest('[data-filter-key]');
+    if (filterBtn) {
+      e.stopPropagation();
+      setQuickFilter(filterBtn.dataset.filterKey, filterBtn.dataset.filterVal);
+      return;
+    }
+    const card = e.target.closest('.story-card');
+    if (card) {
+      const sid = Number(card.dataset.id);
+      const s = _advResults.find(x => x.id === sid) || allStories.find(x => x.id === sid);
+      if (s) openDetail(s);
+    }
+  });
+  grid.addEventListener('keydown', e => {
+    if (e.key !== 'Enter' && e.key !== ' ') return;
+    const card = e.target.closest('.story-card');
+    if (card) {
+      e.preventDefault();
+      const sid = Number(card.dataset.id);
+      const s = _advResults.find(x => x.id === sid) || allStories.find(x => x.id === sid);
+      if (s) openDetail(s);
+    }
+  });
+
+  el('pg-prev').addEventListener('click', () => _goToPage(_displayPage - 1));
+  el('pg-next').addEventListener('click', () => _goToPage(_displayPage + 1));
+  el('pg-jump-btn').addEventListener('click', () => {
+    const n = parseInt(el('pg-jump').value, 10);
+    if (!isNaN(n) && n >= 1) _goToPage(n - 1);
+  });
+  el('pg-jump').addEventListener('keydown', e => {
+    if (e.key === 'Enter') {
+      const n = parseInt(el('pg-jump').value, 10);
+      if (!isNaN(n) && n >= 1) _goToPage(n - 1);
+    }
+  });
+  el('pagination-controls').addEventListener('click', e => {
+    const sizeBtn = e.target.closest('.pg-size-btn');
+    if (!sizeBtn) return;
+    _pageSize = Number(sizeBtn.dataset.size);
+    if (advancedMode) { _advPage = 0; _fetchAdvancedPage(0); }
+    else { _displayPage = 0; _showPage(); }
   });
 
   initCompactHeader();
