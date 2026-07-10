@@ -69,6 +69,9 @@ import java.util.stream.Stream;
 @Slf4j
 public class StoryServiceImpl implements StoryService {
 
+    private static final java.util.regex.Pattern QUERY_FRAGMENT = java.util.regex.Pattern.compile("[?#].*");
+    private static final java.util.regex.Pattern TRAILING_SLASH = java.util.regex.Pattern.compile("/+$");
+
     private final StoryRepository storyRepository;
     private final TagRepository tagRepository;
     private final ReadingHistoryRepository readingHistoryRepository;
@@ -725,9 +728,21 @@ public class StoryServiceImpl implements StoryService {
             story.setCompletedAt(request.getAo3UpdatedDate());
         }
 
-        // Tags: merge (keep user-added, add new AO3 tags)
+        // Tags: merge (keep user-added, add new AO3 tags).
+        // Short-circuit: skip the batch SELECT entirely if all incoming tags are already
+        // present, which is the common case on re-imports.
         if (request.getTags() != null && !request.getTags().isEmpty()) {
-            story.getTags().addAll(resolveTags(request.getTags()));
+            Set<String> incomingNorm = request.getTags().stream()
+                    .filter(n -> n != null && !n.isBlank())
+                    .map(n -> n.trim().toLowerCase())
+                    .collect(Collectors.toSet());
+            Set<String> existingNames = story.getTags().stream()
+                    .map(Tag::getName)
+                    .collect(Collectors.toSet());
+            incomingNorm.removeAll(existingNames);
+            if (!incomingNorm.isEmpty()) {
+                story.getTags().addAll(resolveTags(incomingNorm));
+            }
         }
 
         // AO3 canonical lists: replace wholesale
@@ -960,7 +975,9 @@ public class StoryServiceImpl implements StoryService {
 
     private static String normaliseUrl(String url) {
         if (!StringUtils.hasText(url)) return null;
-        return url.trim().replaceFirst("[?#].*", "").replaceFirst("/+$", "");
+        String stripped = url.trim();
+        stripped = QUERY_FRAGMENT.matcher(stripped).replaceFirst("");
+        return TRAILING_SLASH.matcher(stripped).replaceFirst("");
     }
 
     private PersonalNoteResponse toNoteResponse(Story story) {
