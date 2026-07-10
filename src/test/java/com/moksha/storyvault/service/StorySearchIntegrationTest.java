@@ -73,6 +73,10 @@ class StorySearchIntegrationTest {
         return storyRepository.saveAndFlush(s);
     }
 
+    private List<StoryResponse> search(StorySearchRequest req) {
+        return storyService.advancedSearch(req, 0, 1000).getData();
+    }
+
     // ── Filter by author ──────────────────────────────────────────────────────
 
     @Test
@@ -80,7 +84,7 @@ class StorySearchIntegrationTest {
         save("Story A", "Alice Writer", "Fandom X", List.of(), Set.of());
         save("Story B", "Bob Scribe",   "Fandom X", List.of(), Set.of());
 
-        List<StoryResponse> results = storyService.advancedSearch(
+        List<StoryResponse> results = search(
                 StorySearchRequest.builder().authorContains("alice").build());
 
         assertThat(results).extracting(StoryResponse::getTitle)
@@ -93,7 +97,7 @@ class StorySearchIntegrationTest {
         save("Story B", "Bob Scribe",   "Fandom X", List.of(), Set.of());
         save("Story C", "Charlie Alice","Fandom X", List.of(), Set.of());
 
-        List<StoryResponse> results = storyService.advancedSearch(
+        List<StoryResponse> results = search(
                 StorySearchRequest.builder().authorContains("alice").build());
 
         assertThat(results).extracting(StoryResponse::getTitle)
@@ -107,7 +111,7 @@ class StorySearchIntegrationTest {
         save("Story A", "Author", "Dragon Age",  List.of(), Set.of());
         save("Story B", "Author", "Mass Effect", List.of(), Set.of());
 
-        List<StoryResponse> results = storyService.advancedSearch(
+        List<StoryResponse> results = search(
                 StorySearchRequest.builder().fandomContains("dragon").build());
 
         assertThat(results).extracting(StoryResponse::getTitle)
@@ -121,7 +125,7 @@ class StorySearchIntegrationTest {
         save("Story A", "Author", "Fandom X", List.of("James/Lily"),    Set.of());
         save("Story B", "Author", "Fandom X", List.of("Harry/Hermione"), Set.of());
 
-        List<StoryResponse> results = storyService.advancedSearch(
+        List<StoryResponse> results = search(
                 StorySearchRequest.builder().relationshipContains("james").build());
 
         assertThat(results).extracting(StoryResponse::getTitle)
@@ -133,7 +137,7 @@ class StorySearchIntegrationTest {
         save("Story A", "Author", "Fandom X", List.of("James/Lily"), Set.of());
         save("Story B", "Author", "Fandom X", List.of(),             Set.of());
 
-        List<StoryResponse> results = storyService.advancedSearch(
+        List<StoryResponse> results = search(
                 StorySearchRequest.builder().relationshipContains("james").build());
 
         assertThat(results).extracting(StoryResponse::getTitle)
@@ -147,7 +151,7 @@ class StorySearchIntegrationTest {
         save("Story A", "Author", "Fandom X", List.of(), Set.of("slow burn"));
         save("Story B", "Author", "Fandom X", List.of(), Set.of("hurt/comfort"));
 
-        List<StoryResponse> results = storyService.advancedSearch(
+        List<StoryResponse> results = search(
                 StorySearchRequest.builder().tagContains("slow").build());
 
         assertThat(results).extracting(StoryResponse::getTitle)
@@ -159,7 +163,7 @@ class StorySearchIntegrationTest {
         save("Story A", "Author", "Fandom X", List.of(), Set.of("slow burn"));
         save("Story B", "Author", "Fandom X", List.of(), Set.of("hurt/comfort"));
 
-        List<StoryResponse> results = storyService.advancedSearch(
+        List<StoryResponse> results = search(
                 StorySearchRequest.builder().tagContains("SLOW").build());
 
         assertThat(results).extracting(StoryResponse::getTitle)
@@ -170,7 +174,7 @@ class StorySearchIntegrationTest {
 
     @Test
     void search_filters_by_noteContains() {
-        Story noted = storyRepository.saveAndFlush(Story.builder()
+        storyRepository.saveAndFlush(Story.builder()
                 .title("Noted Story").author("Author").fandom("Fandom")
                 .platform(Platform.AO3).status(StoryStatus.ONGOING).rating(Rating.NOT_RATED)
                 .personalNotes("this one made me cry").user(user).build());
@@ -179,7 +183,7 @@ class StorySearchIntegrationTest {
                 .platform(Platform.AO3).status(StoryStatus.ONGOING).rating(Rating.NOT_RATED)
                 .user(user).build());
 
-        List<StoryResponse> results = storyService.advancedSearch(
+        List<StoryResponse> results = search(
                 StorySearchRequest.builder().noteContains("cry").build());
 
         assertThat(results).extracting(StoryResponse::getTitle)
@@ -193,7 +197,7 @@ class StorySearchIntegrationTest {
                 .platform(Platform.AO3).status(StoryStatus.ONGOING).rating(Rating.NOT_RATED)
                 .personalNotes("this one made me CRY").user(user).build());
 
-        List<StoryResponse> results = storyService.advancedSearch(
+        List<StoryResponse> results = search(
                 StorySearchRequest.builder().noteContains("cry").build());
 
         assertThat(results).extracting(StoryResponse::getTitle)
@@ -206,8 +210,6 @@ class StorySearchIntegrationTest {
     void search_filters_by_labelId() {
         Label faveLabel = labelRepository.saveAndFlush(
                 Label.builder().name("Favourites").user(user).build());
-        Label otherLabel = labelRepository.saveAndFlush(
-                Label.builder().name("Other").user(user).build());
 
         Story labelled = storyRepository.saveAndFlush(Story.builder()
                 .title("Labelled Story").author("Author").fandom("Fandom")
@@ -216,12 +218,12 @@ class StorySearchIntegrationTest {
         labelled.getLabels().add(faveLabel);
         storyRepository.saveAndFlush(labelled);
 
-        Story unlabelled = storyRepository.saveAndFlush(Story.builder()
+        storyRepository.saveAndFlush(Story.builder()
                 .title("Unlabelled Story").author("Author").fandom("Fandom")
                 .platform(Platform.AO3).status(StoryStatus.ONGOING).rating(Rating.NOT_RATED)
                 .user(user).build());
 
-        List<StoryResponse> results = storyService.advancedSearch(
+        List<StoryResponse> results = search(
                 StorySearchRequest.builder().labelId(faveLabel.getId()).build());
 
         assertThat(results).extracting(StoryResponse::getTitle)
@@ -242,7 +244,7 @@ class StorySearchIntegrationTest {
                 .platform(Platform.AO3).status(StoryStatus.ONGOING).rating(Rating.NOT_RATED)
                 .user(otherUser).build());
 
-        List<StoryResponse> results = storyService.advancedSearch(
+        List<StoryResponse> results = search(
                 StorySearchRequest.builder().build());
 
         assertThat(results).extracting(StoryResponse::getTitle)
@@ -257,7 +259,7 @@ class StorySearchIntegrationTest {
         save("Story B", "Author B", "Fandom 2", List.of(), Set.of());
         save("Story C", "Author C", "Fandom 3", List.of(), Set.of());
 
-        List<StoryResponse> results = storyService.advancedSearch(
+        List<StoryResponse> results = search(
                 StorySearchRequest.builder().build());
 
         assertThat(results).hasSize(3);

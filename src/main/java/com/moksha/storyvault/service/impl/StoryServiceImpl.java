@@ -325,10 +325,7 @@ public class StoryServiceImpl implements StoryService {
     @Override
     @Transactional
     public void setLastReadDate(Long storyId, LocalDateTime at) {
-        storyRepository.findById(storyId).ifPresent(story -> {
-            story.setLastAccessedAt(at);
-            storyRepository.save(story);
-        });
+        storyRepository.updateLastAccessedAt(storyId, at);
     }
 
     @Override
@@ -869,12 +866,20 @@ public class StoryServiceImpl implements StoryService {
 
     private Set<Tag> resolveTags(Set<String> tagNames) {
         if (tagNames == null || tagNames.isEmpty()) return new HashSet<>();
-        return tagNames.stream()
+        Set<String> normalized = tagNames.stream()
                 .filter(name -> name != null && !name.isBlank())
                 .map(name -> name.trim().toLowerCase())
-                .map(name -> tagRepository.findByName(name)
-                        .orElseGet(() -> tagRepository.save(Tag.builder().name(name).build())))
                 .collect(Collectors.toSet());
+        if (normalized.isEmpty()) return new HashSet<>();
+        Map<String, Tag> existing = tagRepository.findAllByNameIn(normalized).stream()
+                .collect(Collectors.toMap(Tag::getName, t -> t));
+        Set<Tag> result = new HashSet<>(existing.values());
+        for (String name : normalized) {
+            if (!existing.containsKey(name)) {
+                result.add(tagRepository.save(Tag.builder().name(name).build()));
+            }
+        }
+        return result;
     }
 
     /** Merge AO3 metadata and record STORY_REVISITED + any derived change events. */
