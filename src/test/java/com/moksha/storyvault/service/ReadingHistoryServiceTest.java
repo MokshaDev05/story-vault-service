@@ -27,6 +27,7 @@ import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
@@ -263,7 +264,7 @@ class ReadingHistoryServiceTest {
                 .sourcePlatform("AO3")
                 .build());
 
-        verify(storyRepository).save(argThat(s -> s.getLastAccessedAt() != null));
+        verify(storyRepository).updateLastAccessedAt(eq(10L), any(LocalDateTime.class));
     }
 
     // ── Stage 2: multiple events ──────────────────────────────────────────────
@@ -402,12 +403,12 @@ class ReadingHistoryServiceTest {
         service.log(10L, ReadingHistoryRequest.builder()
                 .chapterNumber(3).readingMode("CHAPTER").sourcePlatform("AO3").build());
 
-        verify(storyRepository).save(argThat(s ->
-                "Test Story".equals(s.getTitle()) &&
-                "Author".equals(s.getAuthor()) &&
-                "Original summary with notes".equals(s.getSummary()) &&
-                s.getLastAccessedAt() != null
-        ));
+        // story entity fields must be unchanged — targeted UPDATE replaces full save
+        assertThat(story.getTitle()).isEqualTo("Test Story");
+        assertThat(story.getAuthor()).isEqualTo("Author");
+        assertThat(story.getSummary()).isEqualTo("Original summary with notes");
+        verify(storyRepository).updateLastAccessedAt(eq(10L), any(LocalDateTime.class));
+        verify(storyRepository, never()).save(any(Story.class));
     }
 
     @Test
@@ -419,10 +420,11 @@ class ReadingHistoryServiceTest {
         service.log(10L, ReadingHistoryRequest.builder()
                 .chapterNumber(1).readingMode("CHAPTER").sourcePlatform("AO3").build());
 
-        verify(storyRepository).save(argThat(s ->
-                s.getReadingStatus() == com.moksha.storyvault.model.enums.ReadingStatus.ON_HOLD &&
-                s.getStatus() == StoryStatus.ONGOING
-        ));
+        // story entity state must be untouched — targeted UPDATE only touches lastAccessedAt
+        assertThat(story.getReadingStatus()).isEqualTo(com.moksha.storyvault.model.enums.ReadingStatus.ON_HOLD);
+        assertThat(story.getStatus()).isEqualTo(StoryStatus.ONGOING);
+        verify(storyRepository).updateLastAccessedAt(eq(10L), any(LocalDateTime.class));
+        verify(storyRepository, never()).save(any(Story.class));
     }
 
     // ── listByStory ───────────────────────────────────────────────────────────

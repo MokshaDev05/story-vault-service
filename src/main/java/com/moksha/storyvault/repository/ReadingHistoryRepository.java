@@ -27,6 +27,9 @@ public interface ReadingHistoryRepository extends JpaRepository<ReadingHistory, 
     Optional<ReadingHistory> findTopByStoryAndEventTypeOrderByAccessedAtDesc(
             Story story, String eventType);
 
+    Optional<ReadingHistory> findTopByStoryAndEventTypeAndAccessedAtBetweenOrderByAccessedAtDesc(
+            Story story, String eventType, LocalDateTime from, LocalDateTime to);
+
     @Query("""
         SELECT new com.moksha.storyvault.dto.ReadingHistoryStats(
             h.story.id, MIN(h.accessedAt), COUNT(h))

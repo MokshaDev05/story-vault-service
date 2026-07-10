@@ -68,29 +68,27 @@ public class ReadingHistoryServiceImpl implements ReadingHistoryService {
                 .build();
 
         ReadingHistory saved = readingHistoryRepository.save(entry);
-
-        story.setLastAccessedAt(LocalDateTime.now());
-        storyRepository.save(story);
-
+        storyRepository.updateLastAccessedAt(storyId, LocalDateTime.now());
         return toResponse(saved);
     }
 
     @Override
     @Transactional
     public ReadingHistoryResponse logImported(Long storyId, LocalDateTime accessedAt) {
+        // Story ownership was validated by the caller (ImportEntryProcessor after upsert).
+        // Use getReferenceById to avoid an extra SELECT — entity is already in the
+        // 1st-level cache from the preceding upsert in the same REQUIRES_NEW transaction.
+        Story story = storyRepository.getReferenceById(storyId);
         User user = securityUtils.currentUser();
-        Story story = storyRepository.findByIdAndUser(storyId, user)
-                .orElseThrow(() -> new StoryNotFoundException(storyId));
 
-        // Dedup: skip if an AO3_IMPORT entry already exists for this story on the same calendar day
+        // Single-query dedup: returns the existing entry if found, empty if we should insert.
         LocalDateTime startOfDay = accessedAt.toLocalDate().atStartOfDay();
         LocalDateTime endOfDay   = startOfDay.plusDays(1);
-        if (readingHistoryRepository.existsByStoryAndEventTypeAndAccessedAtBetween(
-                story, "AO3_IMPORT", startOfDay, endOfDay)) {
-            return readingHistoryRepository
-                    .findTopByStoryAndEventTypeOrderByAccessedAtDesc(story, "AO3_IMPORT")
-                    .map(this::toResponse)
-                    .orElse(null);
+        Optional<ReadingHistory> existing = readingHistoryRepository
+                .findTopByStoryAndEventTypeAndAccessedAtBetweenOrderByAccessedAtDesc(
+                        story, "AO3_IMPORT", startOfDay, endOfDay);
+        if (existing.isPresent()) {
+            return toResponse(existing.get());
         }
 
         ReadingHistory entry = ReadingHistory.builder()

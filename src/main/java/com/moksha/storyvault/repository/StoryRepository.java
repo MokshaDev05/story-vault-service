@@ -85,11 +85,11 @@ public interface StoryRepository extends JpaRepository<Story, Long>, JpaSpecific
     @Query("SELECT DISTINCT s FROM Story s LEFT JOIN FETCH s.collections WHERE s.id IN :ids")
     List<Story> findByIdsWithCollections(@Param("ids") List<Long> ids);
 
-    @Modifying
+    @Modifying(clearAutomatically = true)
     @Query("UPDATE Story s SET s.lastAccessedAt = :at WHERE s.id = :id")
     void updateLastAccessedAt(@Param("id") Long id, @Param("at") LocalDateTime at);
 
-    @Modifying
+    @Modifying(clearAutomatically = true)
     @Query("UPDATE Story s SET s.readingStatus = com.moksha.storyvault.model.enums.ReadingStatus.FINISHED_READING " +
            "WHERE s.user = :user " +
            "AND s.status = com.moksha.storyvault.model.enums.StoryStatus.COMPLETE " +
