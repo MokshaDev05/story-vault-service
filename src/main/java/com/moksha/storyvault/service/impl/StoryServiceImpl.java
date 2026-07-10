@@ -139,6 +139,7 @@ public class StoryServiceImpl implements StoryService {
         List<Story> stories = storyRepository.findAllWithTagsByUser(user);
         if (stories.isEmpty()) return List.of();
         List<Long> storyIds = stories.stream().map(Story::getId).collect(Collectors.toList());
+        hydrateLabelsAndCollections(storyIds);
         Map<Long, ReadingHistoryStats> statsMap = readingHistoryRepository.findStatsByStoryIds(storyIds)
                 .stream()
                 .collect(Collectors.toMap(ReadingHistoryStats::getStoryId, s -> s));
@@ -160,6 +161,7 @@ public class StoryServiceImpl implements StoryService {
         }
 
         List<Story> stories = storyRepository.findByIdsWithTags(ids);
+        hydrateLabelsAndCollections(ids);
         Map<Long, Integer> position = new HashMap<>();
         for (int i = 0; i < ids.size(); i++) position.put(ids.get(i), i);
         stories.sort(Comparator.comparingInt(s -> position.getOrDefault(s.getId(), Integer.MAX_VALUE)));
@@ -549,6 +551,7 @@ public class StoryServiceImpl implements StoryService {
                         storyPage.getTotalElements(), storyPage.getTotalPages(), page, size);
             }
             List<Story> hydrated = storyRepository.findByIdsWithTags(pageIds);
+            hydrateLabelsAndCollections(pageIds);
             Map<Long, Integer> pos = new HashMap<>();
             for (int i = 0; i < pageIds.size(); i++) pos.put(pageIds.get(i), i);
             hydrated.sort(Comparator.comparingInt(s -> pos.getOrDefault(s.getId(), Integer.MAX_VALUE)));
@@ -588,6 +591,7 @@ public class StoryServiceImpl implements StoryService {
                 .stream().map(Story::getId).collect(Collectors.toList());
 
         List<Story> hydrated = storyRepository.findByIdsWithTags(pageIds);
+        hydrateLabelsAndCollections(pageIds);
         Map<Long, Integer> pos = new HashMap<>();
         for (int i = 0; i < pageIds.size(); i++) pos.put(pageIds.get(i), i);
         hydrated.sort(Comparator.comparingInt(s -> pos.getOrDefault(s.getId(), Integer.MAX_VALUE)));
@@ -862,6 +866,12 @@ public class StoryServiceImpl implements StoryService {
         story.setArchiveWarnings(request.getArchiveWarnings() != null ? new ArrayList<>(request.getArchiveWarnings()) : new ArrayList<>());
         story.setCategories(request.getCategories() != null ? new ArrayList<>(request.getCategories()) : new ArrayList<>());
         return story;
+    }
+
+    private void hydrateLabelsAndCollections(List<Long> ids) {
+        if (ids == null || ids.isEmpty()) return;
+        storyRepository.findByIdsWithLabels(ids);
+        storyRepository.findByIdsWithCollections(ids);
     }
 
     private Set<Tag> resolveTags(Set<String> tagNames) {

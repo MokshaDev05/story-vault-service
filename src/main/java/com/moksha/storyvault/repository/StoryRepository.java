@@ -79,6 +79,12 @@ public interface StoryRepository extends JpaRepository<Story, Long>, JpaSpecific
     @Query("SELECT DISTINCT s FROM Story s LEFT JOIN FETCH s.tags WHERE s.id IN :ids")
     List<Story> findByIdsWithTags(@Param("ids") List<Long> ids);
 
+    @Query("SELECT DISTINCT s FROM Story s LEFT JOIN FETCH s.labels WHERE s.id IN :ids")
+    List<Story> findByIdsWithLabels(@Param("ids") List<Long> ids);
+
+    @Query("SELECT DISTINCT s FROM Story s LEFT JOIN FETCH s.collections WHERE s.id IN :ids")
+    List<Story> findByIdsWithCollections(@Param("ids") List<Long> ids);
+
     @Modifying
     @Query("UPDATE Story s SET s.lastAccessedAt = :at WHERE s.id = :id")
     void updateLastAccessedAt(@Param("id") Long id, @Param("at") LocalDateTime at);

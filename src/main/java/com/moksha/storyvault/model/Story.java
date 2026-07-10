@@ -106,6 +106,7 @@ public class Story {
         joinColumns = @JoinColumn(name = "story_id"),
         inverseJoinColumns = @JoinColumn(name = "tag_id")
     )
+    @BatchSize(size = 50)
     @Builder.Default
     private Set<Tag> tags = new HashSet<>();
 
