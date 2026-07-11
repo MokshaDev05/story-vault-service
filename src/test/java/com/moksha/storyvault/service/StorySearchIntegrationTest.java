@@ -1,10 +1,12 @@
 package com.moksha.storyvault.service;
 
+import com.moksha.storyvault.dto.PagedApiResponse;
 import com.moksha.storyvault.dto.StoryResponse;
 import com.moksha.storyvault.dto.StorySearchRequest;
 import com.moksha.storyvault.model.Story;
 import com.moksha.storyvault.model.Tag;
 import com.moksha.storyvault.model.User;
+import com.moksha.storyvault.model.enums.KudosStatus;
 import com.moksha.storyvault.model.enums.Platform;
 import com.moksha.storyvault.model.enums.Rating;
 import com.moksha.storyvault.model.enums.StoryStatus;
@@ -263,5 +265,124 @@ class StorySearchIntegrationTest {
                 StorySearchRequest.builder().build());
 
         assertThat(results).hasSize(3);
+    }
+
+    // ── Kudos filter ──────────────────────────────────────────────────────────
+
+    @Test
+    void search_kudosGiven_true_returns_only_given_stories() {
+        storyRepository.saveAndFlush(Story.builder()
+                .title("Kudosed").author("Author").fandom("Fandom")
+                .platform(Platform.AO3).status(StoryStatus.ONGOING).rating(Rating.NOT_RATED)
+                .kudosStatus(KudosStatus.GIVEN).user(user).build());
+        storyRepository.saveAndFlush(Story.builder()
+                .title("Not Kudosed").author("Author").fandom("Fandom")
+                .platform(Platform.AO3).status(StoryStatus.ONGOING).rating(Rating.NOT_RATED)
+                .kudosStatus(KudosStatus.UNKNOWN).user(user).build());
+
+        List<StoryResponse> results = search(
+                StorySearchRequest.builder().kudosGiven(true).build());
+
+        assertThat(results).extracting(StoryResponse::getTitle)
+                .containsExactlyInAnyOrder("Kudosed");
+    }
+
+    @Test
+    void search_kudosGiven_false_excludes_given_stories() {
+        storyRepository.saveAndFlush(Story.builder()
+                .title("Kudosed").author("Author").fandom("Fandom")
+                .platform(Platform.AO3).status(StoryStatus.ONGOING).rating(Rating.NOT_RATED)
+                .kudosStatus(KudosStatus.GIVEN).user(user).build());
+        storyRepository.saveAndFlush(Story.builder()
+                .title("Not Detected").author("Author").fandom("Fandom")
+                .platform(Platform.AO3).status(StoryStatus.ONGOING).rating(Rating.NOT_RATED)
+                .kudosStatus(KudosStatus.NOT_DETECTED).user(user).build());
+        storyRepository.saveAndFlush(Story.builder()
+                .title("Unknown").author("Author").fandom("Fandom")
+                .platform(Platform.AO3).status(StoryStatus.ONGOING).rating(Rating.NOT_RATED)
+                .kudosStatus(KudosStatus.UNKNOWN).user(user).build());
+
+        List<StoryResponse> results = search(
+                StorySearchRequest.builder().kudosGiven(false).build());
+
+        assertThat(results).extracting(StoryResponse::getTitle)
+                .containsExactlyInAnyOrder("Not Detected", "Unknown")
+                .doesNotContain("Kudosed");
+    }
+
+    // ── Pagination ────────────────────────────────────────────────────────────
+
+    @Test
+    void search_pagination_returns_correct_page_size() {
+        for (int i = 1; i <= 5; i++) {
+            save("Story " + i, "Author", "Fandom", List.of(), Set.of());
+        }
+
+        PagedApiResponse<StoryResponse> page0 =
+                storyService.advancedSearch(StorySearchRequest.builder().build(), 0, 2);
+        PagedApiResponse<StoryResponse> page1 =
+                storyService.advancedSearch(StorySearchRequest.builder().build(), 1, 2);
+
+        assertThat(page0.getData()).hasSize(2);
+        assertThat(page1.getData()).hasSize(2);
+        assertThat(page0.getTotalElements()).isEqualTo(5);
+        assertThat(page0.getTotalPages()).isEqualTo(3);
+    }
+
+    @Test
+    void search_pagination_out_of_bounds_returns_empty() {
+        save("Story A", "Author", "Fandom", List.of(), Set.of());
+        save("Story B", "Author", "Fandom", List.of(), Set.of());
+
+        PagedApiResponse<StoryResponse> result =
+                storyService.advancedSearch(StorySearchRequest.builder().build(), 99, 10);
+
+        assertThat(result.getData()).isEmpty();
+    }
+
+    // ── Summary and tags in response ──────────────────────────────────────────
+
+    @Test
+    void search_results_include_summary() {
+        storyRepository.saveAndFlush(Story.builder()
+                .title("Story With Summary").author("Author").fandom("Fandom")
+                .platform(Platform.AO3).status(StoryStatus.ONGOING).rating(Rating.NOT_RATED)
+                .summary("A detailed summary of this story.").user(user).build());
+
+        List<StoryResponse> results = search(StorySearchRequest.builder().build());
+
+        assertThat(results).hasSize(1);
+        assertThat(results.get(0).getSummary()).isEqualTo("A detailed summary of this story.");
+    }
+
+    @Test
+    void search_results_include_tags() {
+        save("Tagged Story", "Author", "Fandom", List.of(), Set.of("slow burn", "found family"));
+
+        List<StoryResponse> results = search(
+                StorySearchRequest.builder().titleContains("Tagged Story").build());
+
+        assertThat(results).hasSize(1);
+        assertThat(results.get(0).getTags()).containsExactlyInAnyOrder("slow burn", "found family");
+    }
+
+    // ── Sort ──────────────────────────────────────────────────────────────────
+
+    @Test
+    void search_sort_by_title_ascending_is_stable_across_pages() {
+        save("Zebra", "Author", "Fandom", List.of(), Set.of());
+        save("Apple", "Author", "Fandom", List.of(), Set.of());
+        save("Mango", "Author", "Fandom", List.of(), Set.of());
+
+        StorySearchRequest req = StorySearchRequest.builder()
+                .sortBy(StorySearchRequest.SortField.TITLE).sortDir("asc").build();
+
+        PagedApiResponse<StoryResponse> page0 = storyService.advancedSearch(req, 0, 2);
+        PagedApiResponse<StoryResponse> page1 = storyService.advancedSearch(req, 1, 2);
+
+        assertThat(page0.getData()).extracting(StoryResponse::getTitle)
+                .containsExactly("Apple", "Mango");
+        assertThat(page1.getData()).extracting(StoryResponse::getTitle)
+                .containsExactly("Zebra");
     }
 }

@@ -459,6 +459,12 @@ function _buildSearchReq() {
     firstAccessedBefore: str('adv-first-before'),
     minAccessCount:      num('adv-min-reads'),
     chapterAccessed:     num('adv-chapter'),
+    kudosGiven: (() => {
+      const k = el('filter-kudos') ? el('filter-kudos').value : '';
+      if (k === 'GIVEN')     return true;
+      if (k === 'NOT_GIVEN') return false;
+      return null;
+    })(),
     sortBy:  sortBy  || 'LAST_ACCESSED',
     sortDir: sortDir || 'desc',
   };
@@ -466,7 +472,6 @@ function _buildSearchReq() {
 
 async function _fetchPage(page) {
   const req   = _buildSearchReq();
-  const kudos = el('filter-kudos').value;
   _curPage    = Math.max(0, page);
 
   el('loading-state').classList.remove('hidden');
@@ -491,13 +496,9 @@ async function _fetchPage(page) {
     _totalPages      = body.totalPages    || 1;
     _curPage         = body.page          ?? _curPage;
 
-    let display = _currentPageData;
-    if (kudos === 'GIVEN')     display = display.filter(s => s.kudosStatus === 'GIVEN');
-    if (kudos === 'NOT_GIVEN') display = display.filter(s => s.kudosStatus !== 'GIVEN');
-
     el('loading-state').classList.add('hidden');
-    renderCards(display);
-    updateCount(_totalElements, kudos ? display.length : null);
+    renderCards(_currentPageData);
+    updateCount(_totalElements);
     renderQuickFilterChips();
     updateAdvChips(req);
     _renderPagination();
@@ -938,14 +939,10 @@ function applyFilters() {
 }
 
 
-function updateCount(total, kudosFiltered) {
+function updateCount(total) {
   const countEl = el('story-count');
   if (!total) { countEl.classList.add('hidden'); return; }
-  let text = `${total.toLocaleString()} ${total === 1 ? 'story' : 'stories'}`;
-  if (kudosFiltered != null) {
-    text += ` — showing ${kudosFiltered} on this page (kudos filter active)`;
-  }
-  countEl.textContent = text;
+  countEl.textContent = `${total.toLocaleString()} ${total === 1 ? 'story' : 'stories'}`;
   countEl.classList.remove('hidden');
 }
 

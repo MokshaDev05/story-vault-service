@@ -532,6 +532,11 @@ public class StoryServiceImpl implements StoryService {
                    .where(cb.equal(h.get("story"), root));
                 predicates.add(cb.greaterThanOrEqualTo(sub, (long) req.getMinAccessCount()));
             }
+            if (req.getKudosGiven() != null) {
+                predicates.add(Boolean.TRUE.equals(req.getKudosGiven())
+                        ? cb.equal(root.get("kudosStatus"), KudosStatus.GIVEN)
+                        : cb.notEqual(root.get("kudosStatus"), KudosStatus.GIVEN));
+            }
 
             return cb.and(predicates.toArray(new Predicate[0]));
         };

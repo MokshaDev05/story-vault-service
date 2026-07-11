@@ -54,6 +54,9 @@ public class StorySearchRequest {
     // ── Collections ───────────────────────────────────────────────────────────
     private Long collectionId;
 
+    // ── Kudos ─────────────────────────────────────────────────────────────────
+    private Boolean kudosGiven;
+
     // ── Notes & Labels ────────────────────────────────────────────────────────
     private String noteContains;
     private Boolean hasNote;
