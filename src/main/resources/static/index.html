@@ -389,23 +389,9 @@
         <p id="story-count" class="story-count hidden"></p>
         <p id="loading-state" class="loading-state hidden">Loading your vault…</p>
         <p id="fetch-error" class="fetch-error hidden">Could not load stories. Is the service running?</p>
+        <div id="pagination-top" class="pagination-controls pagination-top hidden"></div>
         <div id="cards-grid" class="cards-grid"></div>
-        <div id="pagination-controls" class="pagination-controls hidden">
-          <div class="pg-size-row">
-            <span class="pg-size-label">Per page:</span>
-            <button class="pg-size-btn btn btn-sm btn-ghost" data-size="25">25</button>
-            <button class="pg-size-btn btn btn-sm btn-ghost" data-size="50">50</button>
-            <button class="pg-size-btn btn btn-sm btn-ghost" data-size="100">100</button>
-          </div>
-          <div class="pg-nav-row">
-            <button id="pg-prev" class="btn btn-sm btn-ghost">‹ Prev</button>
-            <span id="pg-info" class="pg-info">Page 1 of 1</span>
-            <button id="pg-next" class="btn btn-sm btn-ghost">Next ›</button>
-            <span class="pg-jump-label">Go to:</span>
-            <input id="pg-jump" type="number" min="1" class="pg-jump-input" aria-label="Jump to page" />
-            <button id="pg-jump-btn" class="btn btn-sm btn-ghost">Go</button>
-          </div>
-        </div>
+        <div id="pagination-bot" class="pagination-controls hidden"></div>
         <div id="empty-state" class="empty-state hidden">
           <div class="empty-gem">◆</div>
           <h2 class="empty-title">Your vault is empty.</h2>

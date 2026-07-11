@@ -10,14 +10,13 @@ if (typeof window.i18n !== 'object' || !window.i18n) {
 
 const API = 'http://localhost:8080/api/v1';
 
-let allStories = [];
+let _currentPageData = [];
 let allCollections = [];
 let allLabels = [];
 let token = localStorage.getItem('sv_token');
 let editingStoryId = null;
-let advancedMode = false;      // true when showing POST /search results
 let advPanelOpen = false;
-let quickFilters = {};         // active field-specific filters: {author, fandom, tag, relationship}
+let quickFilters = {};
 let vaultOpen = false;
 let privacyMode = false;
 let dataLoaded = false;
@@ -29,18 +28,10 @@ let showKudos     = true;
 let showChips     = true;
 
 // ─── Pagination state ─────────────────────────────────────────────────────────
-let _displayPage   = 0;
+let _curPage       = 0;
 let _pageSize      = 50;
 let _totalElements = 0;
 let _totalPages    = 1;
-let _bgLoading     = false;
-let _bgAbort       = null;
-// Advanced search (server-paged)
-let _advResults       = [];
-let _advPage          = 0;
-let _advTotalPages    = 1;
-let _advTotalElements = 0;
-let _advLastReq       = null;
 
 // ─── Init ─────────────────────────────────────────────────────────────────────
 
@@ -403,15 +394,13 @@ function logout() {
   token = null;
   localStorage.removeItem('sv_token');
   localStorage.removeItem('sv_vault_open');
-  allStories = [];
+  _currentPageData = [];
   allCollections = [];
   quickFilters = {};
   vaultOpen = false;
   dataLoaded = false;
   currentView = 'library';
-  _displayPage = 0; _totalElements = 0; _totalPages = 1;
-  _advResults = []; _advPage = 0; _advTotalPages = 1; _advTotalElements = 0; _advLastReq = null;
-  if (_bgAbort) { _bgAbort.abort(); _bgAbort = null; } _bgLoading = false;
+  _curPage = 0; _totalElements = 0; _totalPages = 1;
   closeNavDrawer();
   el('cards-grid').innerHTML = '';
   const headerUser = el('header-username');
@@ -426,195 +415,262 @@ function handleUnauthorized() {
 // ─── Data ─────────────────────────────────────────────────────────────────────
 
 async function fetchStories() {
-  _displayPage = 0;
-  allStories = [];
-  if (_bgAbort) { _bgAbort.abort(); _bgAbort = null; }
-  _bgLoading = false;
+  _syncFromUrl();
+  await _fetchPage(_curPage);
+}
+
+function _buildSearchReq() {
+  const q          = el('search-input').value.trim();
+  const platform   = el('filter-platform').value;
+  const status     = el('filter-status').value;
+  const collFilter = el('filter-collection').value;
+  const labelFilter = el('filter-label') ? el('filter-label').value : '';
+  const sortBy     = el('adv-sort-by')  ? el('adv-sort-by').value  : 'LAST_ACCESSED';
+  const sortDir    = el('adv-sort-dir') ? el('adv-sort-dir').value : 'desc';
+
+  const num = id => { const n = parseInt(el(id) ? el(id).value : '', 10); return isNaN(n) ? null : n; };
+  const str = id => (el(id) ? el(id).value.trim() : '') || null;
+
+  return {
+    titleContains:        q || null,
+    authorContains:       quickFilters.author       || null,
+    fandomContains:       quickFilters.fandom       || null,
+    platform:             platform  || null,
+    status:               status    || null,
+    rating:               str('adv-rating'),
+    readingStatus:        str('adv-reading-status'),
+    language:             str('adv-language'),
+    tagContains:          quickFilters.tag          || str('adv-tag'),
+    relationshipContains: quickFilters.relationship || str('adv-ship'),
+    characterContains:    str('adv-char'),
+    collectionId:         collFilter  ? Number(collFilter)  : null,
+    labelId:              labelFilter ? Number(labelFilter) : null,
+    minWordCount:   num('adv-words-min'),
+    maxWordCount:   num('adv-words-max'),
+    minChapters:    num('adv-chaps-min'),
+    maxChapters:    num('adv-chaps-max'),
+    publishedAfter:      str('adv-pub-after'),
+    publishedBefore:     str('adv-pub-before'),
+    updatedAfter:        str('adv-upd-after'),
+    updatedBefore:       str('adv-upd-before'),
+    lastAccessedAfter:   str('adv-last-after'),
+    lastAccessedBefore:  str('adv-last-before'),
+    firstAccessedAfter:  str('adv-first-after'),
+    firstAccessedBefore: str('adv-first-before'),
+    minAccessCount:      num('adv-min-reads'),
+    chapterAccessed:     num('adv-chapter'),
+    sortBy:  sortBy  || 'LAST_ACCESSED',
+    sortDir: sortDir || 'desc',
+  };
+}
+
+async function _fetchPage(page) {
+  const req   = _buildSearchReq();
+  const kudos = el('filter-kudos').value;
+  _curPage    = Math.max(0, page);
 
   el('loading-state').classList.remove('hidden');
   el('fetch-error').classList.add('hidden');
   el('empty-state').classList.add('hidden');
   el('story-count').classList.add('hidden');
-  el('pagination-controls').classList.add('hidden');
   el('cards-grid').innerHTML = '';
+  _hidePagination();
 
   try {
-    const body = await _fetchStoriesPage(0);
-    allStories = body.data || [];
-    _totalElements = body.totalElements || 0;
-    _totalPages    = body.totalPages    || 1;
-    el('loading-state').classList.add('hidden');
-    applyFilters();
-    _loadAllInBackground();
-  } catch {
-    el('loading-state').classList.add('hidden');
-    el('fetch-error').classList.remove('hidden');
-  }
-}
-
-async function _fetchStoriesPage(page) {
-  const res = await fetch(`${API}/stories?page=${page}&size=50`, {
-    headers: { Authorization: `Bearer ${token}` },
-  });
-  if (res.status === 401) { handleUnauthorized(); throw new Error('Unauthorized'); }
-  const body = await res.json();
-  if (!res.ok) throw new Error(body.message || `HTTP ${res.status}`);
-  return body;
-}
-
-async function _loadAllInBackground() {
-  if (_bgLoading || _totalPages <= 1) return;
-  _bgLoading = true;
-  const ctrl = new AbortController();
-  _bgAbort = ctrl;
-  try {
-    for (let p = 1; p < _totalPages; p++) {
-      if (ctrl.signal.aborted) break;
-      const res = await fetch(`${API}/stories?page=${p}&size=50`, {
-        headers: { Authorization: `Bearer ${token}` },
-        signal: ctrl.signal,
-      });
-      if (res.status === 401) { handleUnauthorized(); break; }
-      if (!res.ok) break;
-      const body = await res.json();
-      allStories = [...allStories, ...(body.data || [])];
-      _totalPages = body.totalPages || _totalPages;
-      if (!advancedMode && _bgAbort === ctrl) _silentPaginationUpdate();
-    }
-  } catch { /* aborted or network error */ }
-  finally { if (_bgAbort === ctrl) { _bgLoading = false; _bgAbort = null; } }
-}
-
-function _silentPaginationUpdate() {
-  const list = _buildList();
-  updateCount(list.length, false);
-  _renderPagination(list.length);
-}
-
-function _buildList() {
-  if (advancedMode) return _advResults;
-
-  const search      = el('search-input').value.toLowerCase().trim();
-  const platform    = el('filter-platform').value;
-  const status      = el('filter-status').value;
-  const kudos       = el('filter-kudos').value;
-  const collFilter  = el('filter-collection').value;
-  const labelFilter = el('filter-label') ? el('filter-label').value : '';
-
-  let list = allStories;
-
-  if (search) {
-    list = list.filter(s =>
-      s.title.toLowerCase().includes(search)  ||
-      s.author.toLowerCase().includes(search) ||
-      s.fandom.toLowerCase().includes(search) ||
-      (s.tags          || []).some(t => t.toLowerCase().includes(search)) ||
-      (s.relationships || []).some(r => r.toLowerCase().includes(search)) ||
-      (s.characters    || []).some(c => c.toLowerCase().includes(search)) ||
-      (s.personalNotes || '').toLowerCase().includes(search) ||
-      (s.labels        || []).some(l => l.name.toLowerCase().includes(search))
-    );
-  }
-  if (platform) list = list.filter(s => s.platform === platform);
-  if (status)   list = list.filter(s => s.status   === status);
-  if (kudos === 'GIVEN')     list = list.filter(s => s.kudosStatus === 'GIVEN');
-  if (kudos === 'NOT_GIVEN') list = list.filter(s => s.kudosStatus !== 'GIVEN');
-  if (collFilter) list = list.filter(s =>
-    (s.collections || []).some(c => String(c.id) === collFilter));
-  if (labelFilter) list = list.filter(s =>
-    (s.labels || []).some(l => String(l.id) === labelFilter));
-
-  if (quickFilters.author)
-    list = list.filter(s => s.author.toLowerCase() === quickFilters.author.toLowerCase());
-  if (quickFilters.fandom)
-    list = list.filter(s => s.fandom.toLowerCase() === quickFilters.fandom.toLowerCase());
-  if (quickFilters.tag)
-    list = list.filter(s => (s.tags || []).some(t => t.toLowerCase() === quickFilters.tag.toLowerCase()));
-  if (quickFilters.relationship)
-    list = list.filter(s => (s.relationships || []).some(r => r.toLowerCase() === quickFilters.relationship.toLowerCase()));
-
-  return list;
-}
-
-function _showPage() {
-  if (advancedMode) {
-    renderCards(_advResults);
-    updateCount(_advTotalElements, true);
-    renderQuickFilterChips();
-    _renderPagination(_advTotalElements);
-    return;
-  }
-  const list  = _buildList();
-  const start = _displayPage * _pageSize;
-  const slice = list.slice(start, start + _pageSize);
-  renderCards(slice);
-  updateCount(list.length, false);
-  renderQuickFilterChips();
-  _renderPagination(list.length);
-}
-
-async function _goToPage(n) {
-  if (advancedMode) {
-    const clamped = Math.max(0, Math.min(n, _advTotalPages - 1));
-    await _fetchAdvancedPage(clamped);
-    window.scrollTo({ top: 0, behavior: 'smooth' });
-    return;
-  }
-  const list       = _buildList();
-  const totalPages = Math.max(1, Math.ceil(list.length / _pageSize));
-  _displayPage = Math.max(0, Math.min(n, totalPages - 1));
-  _showPage();
-  window.scrollTo({ top: 0, behavior: 'smooth' });
-}
-
-function _renderPagination(totalFiltered) {
-  const controls = el('pagination-controls');
-  let totalPages, curPage;
-  if (advancedMode) {
-    totalPages = _advTotalPages;
-    curPage    = _advPage;
-  } else {
-    totalPages = Math.max(1, Math.ceil(totalFiltered / _pageSize));
-    curPage    = _displayPage;
-  }
-  if (totalFiltered === 0 || totalPages <= 1) {
-    controls.classList.add('hidden');
-    return;
-  }
-  controls.classList.remove('hidden');
-  el('pg-info').textContent = `Page ${curPage + 1} of ${totalPages}`;
-  el('pg-prev').disabled    = curPage === 0;
-  el('pg-next').disabled    = curPage >= totalPages - 1;
-  el('pg-jump').value       = '';
-  el('pg-jump').setAttribute('max', totalPages);
-  document.querySelectorAll('.pg-size-btn').forEach(btn => {
-    btn.classList.toggle('active', Number(btn.dataset.size) === _pageSize);
-  });
-}
-
-async function _fetchAdvancedPage(page) {
-  if (!_advLastReq) return;
-  el('loading-state').classList.remove('hidden');
-  el('cards-grid').innerHTML = '';
-  el('pagination-controls').classList.add('hidden');
-  try {
-    const res = await fetch(`${API}/stories/search?page=${page}&size=${_pageSize}`, {
+    const res = await fetch(`${API}/stories/search?page=${_curPage}&size=${_pageSize}`, {
       method:  'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-      body:    JSON.stringify(_advLastReq),
+      body:    JSON.stringify(req),
     });
     if (res.status === 401) { handleUnauthorized(); return; }
     const body = await res.json();
-    _advResults       = body.data          || [];
-    _advPage          = body.page          ?? page;
-    _advTotalPages    = body.totalPages    || 1;
-    _advTotalElements = body.totalElements || 0;
+    if (!res.ok) throw new Error(body.message || `HTTP ${res.status}`);
+
+    _currentPageData = body.data          || [];
+    _totalElements   = body.totalElements || 0;
+    _totalPages      = body.totalPages    || 1;
+    _curPage         = body.page          ?? _curPage;
+
+    let display = _currentPageData;
+    if (kudos === 'GIVEN')     display = display.filter(s => s.kudosStatus === 'GIVEN');
+    if (kudos === 'NOT_GIVEN') display = display.filter(s => s.kudosStatus !== 'GIVEN');
+
     el('loading-state').classList.add('hidden');
-    _showPage();
+    renderCards(display);
+    updateCount(_totalElements, kudos ? display.length : null);
+    renderQuickFilterChips();
+    updateAdvChips(req);
+    _renderPagination();
+    _pushState();
   } catch {
     el('loading-state').classList.add('hidden');
     el('fetch-error').classList.remove('hidden');
   }
+}
+
+function _hidePagination() {
+  ['pagination-top', 'pagination-bot'].forEach(id => {
+    const c = el(id); if (c) c.classList.add('hidden');
+  });
+}
+
+async function _goToPage(n) {
+  const clamped = Math.max(0, Math.min(n, _totalPages - 1));
+  await _fetchPage(clamped);
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+function _renderPagination() {
+  ['pagination-top', 'pagination-bot'].forEach(id => {
+    const container = el(id);
+    if (!container) return;
+
+    if (_totalElements === 0 || _totalPages <= 1) {
+      container.classList.add('hidden');
+      return;
+    }
+
+    container.classList.remove('hidden');
+    container.innerHTML = _paginationHTML();
+
+    container.querySelector('.pg-first')?.addEventListener('click', () => _goToPage(0));
+    container.querySelector('.pg-prev')?.addEventListener('click',  () => _goToPage(_curPage - 1));
+    container.querySelector('.pg-next')?.addEventListener('click',  () => _goToPage(_curPage + 1));
+    container.querySelector('.pg-last')?.addEventListener('click',  () => _goToPage(_totalPages - 1));
+
+    container.querySelectorAll('.pg-number').forEach(btn =>
+      btn.addEventListener('click', () => _goToPage(Number(btn.dataset.page)))
+    );
+
+    const jumpInput = container.querySelector('.pg-jump-input');
+    const doJump = () => {
+      const n = parseInt(jumpInput ? jumpInput.value : '', 10);
+      if (!isNaN(n) && n >= 1) _goToPage(n - 1);
+    };
+    container.querySelector('.pg-jump-btn')?.addEventListener('click', doJump);
+    jumpInput?.addEventListener('keydown', e => { if (e.key === 'Enter') doJump(); });
+
+    container.querySelectorAll('.pg-size-btn').forEach(btn =>
+      btn.addEventListener('click', () => { _pageSize = Number(btn.dataset.size); _fetchPage(0); })
+    );
+  });
+}
+
+function _paginationHTML() {
+  const sizeRow = `
+    <div class="pg-size-row">
+      <span class="pg-size-label">Per page:</span>
+      ${[25, 50, 100].map(s =>
+        `<button class="pg-size-btn btn btn-sm btn-ghost${_pageSize === s ? ' active' : ''}" data-size="${s}">${s}</button>`
+      ).join('')}
+    </div>`;
+
+  const nums    = _pageNumbers(_curPage, _totalPages);
+  const numBtns = nums.map(p =>
+    p === '...'
+      ? `<span class="pg-ellipsis" aria-hidden="true">…</span>`
+      : `<button class="pg-number btn btn-sm btn-ghost${p === _curPage ? ' active' : ''}" data-page="${p}" aria-label="Page ${p + 1}"${p === _curPage ? ' aria-current="page"' : ''}>${p + 1}</button>`
+  ).join('');
+
+  const dis1 = _curPage === 0 ? ' disabled' : '';
+  const dis2 = _curPage >= _totalPages - 1 ? ' disabled' : '';
+
+  const navRow = `
+    <div class="pg-nav-row">
+      <button class="pg-first btn btn-sm btn-ghost"${dis1}>« First</button>
+      <button class="pg-prev btn btn-sm btn-ghost"${dis1}>‹ Prev</button>
+      ${numBtns}
+      <button class="pg-next btn btn-sm btn-ghost"${dis2}>Next ›</button>
+      <button class="pg-last btn btn-sm btn-ghost"${dis2}>Last »</button>
+      <span class="pg-info">Page ${_curPage + 1} of ${_totalPages}</span>
+      <span class="pg-jump-label">Go to:</span>
+      <input class="pg-jump-input" type="number" min="1" max="${_totalPages}" aria-label="Jump to page" />
+      <button class="pg-jump-btn btn btn-sm btn-ghost">Go</button>
+    </div>`;
+
+  return sizeRow + navRow;
+}
+
+function _pageNumbers(curPage, totalPages) {
+  if (totalPages <= 7) return Array.from({ length: totalPages }, (_, i) => i);
+  const result = [0];
+  const left   = Math.max(1, curPage - 2);
+  const right  = Math.min(totalPages - 2, curPage + 2);
+  if (left  > 1)            result.push('...');
+  for (let i = left; i <= right; i++) result.push(i);
+  if (right < totalPages - 2) result.push('...');
+  result.push(totalPages - 1);
+  return result;
+}
+
+function _pushState() {
+  const params   = new URLSearchParams();
+  const q        = el('search-input').value.trim();
+  const platform = el('filter-platform').value;
+  const status   = el('filter-status').value;
+  const kudos    = el('filter-kudos').value;
+  const coll     = el('filter-collection').value;
+  const label    = el('filter-label') ? el('filter-label').value : '';
+  const sortBy   = el('adv-sort-by')  ? el('adv-sort-by').value  : '';
+  const sortDir  = el('adv-sort-dir') ? el('adv-sort-dir').value : '';
+
+  if (q)                              params.set('q',         q);
+  if (platform)                       params.set('platform',  platform);
+  if (status)                         params.set('status',    status);
+  if (kudos)                          params.set('kudos',     kudos);
+  if (coll)                           params.set('collection',coll);
+  if (label)                          params.set('label',     label);
+  if (_curPage  > 0)                  params.set('page',      _curPage);
+  if (_pageSize !== 50)               params.set('size',      _pageSize);
+  if (sortBy  && sortBy  !== 'LAST_ACCESSED') params.set('sortBy',  sortBy);
+  if (sortDir && sortDir !== 'desc')          params.set('sortDir', sortDir);
+
+  if (quickFilters.author)       params.set('fa', quickFilters.author);
+  if (quickFilters.fandom)       params.set('ff', quickFilters.fandom);
+  if (quickFilters.tag)          params.set('ft', quickFilters.tag);
+  if (quickFilters.relationship) params.set('fr', quickFilters.relationship);
+
+  const advIds = ['adv-rating','adv-reading-status','adv-language','adv-tag','adv-ship','adv-char',
+    'adv-words-min','adv-words-max','adv-chaps-min','adv-chaps-max',
+    'adv-pub-after','adv-pub-before','adv-upd-after','adv-upd-before',
+    'adv-last-after','adv-last-before','adv-first-after','adv-first-before',
+    'adv-min-reads','adv-chapter'];
+  advIds.forEach(id => { const v = el(id) ? el(id).value : ''; if (v) params.set(id, v); });
+
+  const qs = params.toString();
+  history.pushState({}, '', qs ? `?${qs}` : location.pathname);
+}
+
+function _syncFromUrl() {
+  const p = new URLSearchParams(location.search);
+  const setV = (elId, key) => { const v = p.get(key); if (el(elId)) el(elId).value = v || ''; };
+
+  setV('search-input',     'q');
+  setV('filter-platform',  'platform');
+  setV('filter-status',    'status');
+  setV('filter-kudos',     'kudos');
+  setV('filter-collection','collection');
+  setV('filter-label',     'label');
+
+  _curPage  = Math.max(0, parseInt(p.get('page') || '0', 10) || 0);
+  _pageSize = parseInt(p.get('size') || '50', 10) || 50;
+  if (![25, 50, 100].includes(_pageSize)) _pageSize = 50;
+
+  if (el('adv-sort-by'))  el('adv-sort-by').value  = p.get('sortBy')  || 'LAST_ACCESSED';
+  if (el('adv-sort-dir')) el('adv-sort-dir').value = p.get('sortDir') || 'desc';
+
+  quickFilters = {};
+  const fa = p.get('fa'); if (fa) quickFilters.author       = fa;
+  const ff = p.get('ff'); if (ff) quickFilters.fandom       = ff;
+  const ft = p.get('ft'); if (ft) quickFilters.tag          = ft;
+  const fr = p.get('fr'); if (fr) quickFilters.relationship = fr;
+
+  const advIds = ['adv-rating','adv-reading-status','adv-language','adv-tag','adv-ship','adv-char',
+    'adv-words-min','adv-words-max','adv-chaps-min','adv-chaps-max',
+    'adv-pub-after','adv-pub-before','adv-upd-after','adv-upd-before',
+    'adv-last-after','adv-last-before','adv-first-after','adv-first-before',
+    'adv-min-reads','adv-chapter'];
+  advIds.forEach(id => { const v = p.get(id); if (el(id) && v) el(id).value = v; });
 }
 
 async function createStory(data) {
@@ -878,40 +934,18 @@ async function confirmDeleteCollectionFromList(id, btn) {
 // ─── Filters ──────────────────────────────────────────────────────────────────
 
 function applyFilters() {
-  if (advancedMode) return;
-  _displayPage = 0;
-  _showPage();
+  _fetchPage(0);
 }
 
-function hasActiveFilters() {
-  return !!(
-    el('search-input').value.trim()                      ||
-    el('filter-platform').value                          ||
-    el('filter-status').value                            ||
-    el('filter-kudos').value                             ||
-    el('filter-collection').value                        ||
-    (el('filter-label') && el('filter-label').value)    ||
-    quickFilters.author                                  ||
-    quickFilters.fandom                                  ||
-    quickFilters.tag                                     ||
-    quickFilters.relationship
-  );
-}
 
-function updateCount(shown, isAdvanced) {
+function updateCount(total, kudosFiltered) {
   const countEl = el('story-count');
-  if (isAdvanced) {
-    countEl.textContent = `${shown} ${shown === 1 ? 'result' : 'results'} — advanced search`;
-    countEl.classList.remove('hidden');
-    return;
+  if (!total) { countEl.classList.add('hidden'); return; }
+  let text = `${total.toLocaleString()} ${total === 1 ? 'story' : 'stories'}`;
+  if (kudosFiltered != null) {
+    text += ` — showing ${kudosFiltered} on this page (kudos filter active)`;
   }
-  const total = _totalElements || allStories.length;
-  if (total === 0) { countEl.classList.add('hidden'); return; }
-  const loaded = allStories.length;
-  const suffix = loaded < total ? ` (${loaded.toLocaleString()} loaded)` : '';
-  countEl.textContent = shown === loaded
-    ? `${total.toLocaleString()} ${total === 1 ? 'story' : 'stories'} in your vault${suffix}`
-    : `Showing ${shown.toLocaleString()} of ${total.toLocaleString()} stories${suffix}`;
+  countEl.textContent = text;
   countEl.classList.remove('hidden');
 }
 
@@ -959,49 +993,31 @@ function buildAdvRequest() {
 }
 
 async function runAdvancedSearch() {
-  const req = buildAdvRequest();
-  _advLastReq       = req;
-  _advPage          = 0;
-  _advTotalPages    = 1;
-  _advTotalElements = 0;
-  _advResults       = [];
-  advancedMode      = true;
-
   el('fetch-error').classList.add('hidden');
   el('empty-state').classList.add('hidden');
-  updateAdvChips(req);
-  await _fetchAdvancedPage(0);
+  await _fetchPage(0);
 }
 
 function clearAdvancedSearch() {
-  // Reset all advanced inputs
   ['adv-last-after','adv-last-before','adv-first-after','adv-first-before',
    'adv-min-reads','adv-chapter','adv-language','adv-tag','adv-ship','adv-char',
    'adv-words-min','adv-words-max','adv-chaps-min','adv-chaps-max',
    'adv-pub-after','adv-pub-before','adv-upd-after','adv-upd-before'].forEach(id => {
-    el(id).value = '';
+    const e = el(id); if (e) e.value = '';
   });
-  el('adv-reading-status').value = '';
-  el('adv-rating').value         = '';
-  el('adv-sort-by').value        = 'LAST_ACCESSED';
-  el('adv-sort-dir').value       = 'desc';
-  el('adv-chips').innerHTML      = '';
+  if (el('adv-reading-status')) el('adv-reading-status').value = '';
+  if (el('adv-rating'))         el('adv-rating').value         = '';
+  if (el('adv-sort-by'))        el('adv-sort-by').value        = 'LAST_ACCESSED';
+  if (el('adv-sort-dir'))       el('adv-sort-dir').value       = 'desc';
+  el('adv-chips').innerHTML = '';
   quickFilters = {};
-
-  advancedMode      = false;
-  _advResults       = [];
-  _advLastReq       = null;
-  _advPage          = 0;
-  _advTotalPages    = 1;
-  _advTotalElements = 0;
-  applyFilters();
+  _fetchPage(0);
 }
 
 // ─── Quick filters ────────────────────────────────────────────────────────────
 
 function setQuickFilter(key, val) {
   quickFilters[key] = val;
-  advancedMode = false;
   applyFilters();
   el('quick-filter-chips').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
 }
@@ -1071,6 +1087,47 @@ function updateAdvChips(req) {
 
 // ─── Render cards ─────────────────────────────────────────────────────────────
 
+const SUMMARY_CHAR_THRESHOLD = 220;
+const TAGS_PREVIEW_LIMIT     = 6;
+
+function escSummaryBreaks(text) {
+  return text.trim().split(/\n\n+/)
+    .map(p => esc(p.replace(/\n/g, ' ').trim()))
+    .filter(Boolean)
+    .join('<br>');
+}
+
+function _prioritizedTags(s) {
+  const seen = new Set();
+  const pool = [];
+  const add  = (item, type) => {
+    const key = (item || '').toLowerCase();
+    if (!seen.has(key)) { seen.add(key); pool.push({ text: item, type }); }
+  };
+  (s.tags          || []).forEach(t => add(t, 'tag'));
+  (s.categories    || []).forEach(c => add(c, 'category'));
+  (s.archiveWarnings || [])
+    .filter(w => w && !w.toLowerCase().includes('no archive warnings apply'))
+    .forEach(w => add(w, 'warning'));
+  (s.relationships || []).forEach(r => add(r, 'relationship'));
+  return pool;
+}
+
+function _tagPillHTML(tag) {
+  switch (tag.type) {
+    case 'tag':
+      return `<button class="tag-pill tag-pill-btn" data-filter-key="tag" data-filter-val="${escA(tag.text)}">${esc(tag.text)}</button>`;
+    case 'relationship':
+      return `<button class="tag-pill tag-pill-btn" data-filter-key="relationship" data-filter-val="${escA(tag.text)}">${esc(tag.text)}</button>`;
+    case 'warning':
+      return `<span class="tag-pill tag-pill-warn">${esc(tag.text)}</span>`;
+    case 'category':
+      return `<span class="tag-pill tag-pill-cat">${esc(tag.text)}</span>`;
+    default:
+      return `<span class="tag-pill">${esc(tag.text)}</span>`;
+  }
+}
+
 function renderCards(stories) {
   const grid  = el('cards-grid');
   const empty = el('empty-state');
@@ -1094,20 +1151,41 @@ function cardHTML(s) {
        </div>`
     : officialChip;
 
-  const ships = (s.relationships || []).slice(0, 2);
-  const shipHTML = ships.length
-    ? `<p class="card-ships">${ships.map(r =>
-        `<button class="card-ship-btn" data-filter-key="relationship" data-filter-val="${escA(r)}">${esc(r)}</button>`
-      ).join(' · ')}</p>`
-    : '';
-  const tags = (s.tags || []).slice(0, 5).map(tagName =>
-    `<button class="tag-pill tag-pill-btn" data-filter-key="tag" data-filter-val="${escA(tagName)}">${esc(tagName)}</button>`
-  ).join('');
+  // ── Summary ──
+  const rawSummary = (s.summary || '').trim();
+  let summaryHTML;
+  if (!rawSummary) {
+    summaryHTML = `<p class="card-summary-none">No summary available.</p>`;
+  } else {
+    const isLong = rawSummary.length > SUMMARY_CHAR_THRESHOLD;
+    summaryHTML = `
+      <div class="card-summary-wrap">
+        <div class="card-summary${isLong ? ' card-summary--clamped' : ''}">${escSummaryBreaks(rawSummary)}</div>
+        ${isLong ? `<button class="card-summary-toggle" aria-expanded="false">Show more</button>` : ''}
+      </div>`;
+  }
+
+  // ── Tags ──
+  const allTags    = _prioritizedTags(s);
+  const preview    = allTags.slice(0, TAGS_PREVIEW_LIMIT);
+  const extra      = allTags.slice(TAGS_PREVIEW_LIMIT);
+  const moreCount  = extra.length;
+  const previewHTML = preview.map(_tagPillHTML).join('');
+  const extraHTML   = extra.map(_tagPillHTML).join('');
+  const tagsHTML = `
+    <div class="card-tags-section">
+      <div class="card-tags-preview">
+        ${previewHTML}
+        ${moreCount > 0 ? `<button class="card-tag-more" data-count="${moreCount}" aria-expanded="false">+${moreCount} more</button>` : ''}
+      </div>
+      ${moreCount > 0 ? `<div class="card-tags-extra hidden">${extraHTML}</div>` : ''}
+    </div>`;
+
   const continueCardUrl = s.currentChapterUrl || s.originalUrl;
-  const urlIcon = continueCardUrl
+  const urlIcon  = continueCardUrl
     ? `<a href="${escA(continueCardUrl)}" target="_blank" rel="noopener noreferrer" class="card-url-link" title="${s.currentChapterUrl ? 'Continue Reading' : 'Open original'}" onclick="event.stopPropagation()">↗</a>`
     : '';
-  const fileIcon  = s.hasFile ? `<span class="card-file-icon" title="File attached">◎</span>` : '';
+  const fileIcon  = s.hasFile    ? `<span class="card-file-icon" title="File attached">◎</span>` : '';
   const kudosIcon = showKudos && s.kudosStatus === 'GIVEN' ? `<span class="card-kudos-icon" title="Kudosed">♥</span>` : '';
   const collChips = showChips ? (s.collections || []).slice(0, 3).map(c =>
     `<span class="collection-chip collection-chip-card">${esc(c.name)}</span>`).join('') : '';
@@ -1126,14 +1204,14 @@ function cardHTML(s) {
         <button class="card-fandom" data-filter-key="fandom" data-filter-val="${escA(s.fandom)}">${esc(s.fandom)}</button>
         ${badgeArea}
       </div>
-      ${shipHTML}
       <h2 class="card-title">${esc(s.title)}</h2>
       <p class="card-author">by <button class="card-author-btn" data-filter-key="author" data-filter-val="${escA(s.author)}">${esc(s.author)}</button></p>
       <div class="card-rule"></div>
+      <div class="card-summary-section">${summaryHTML}</div>
+      ${tagsHTML}
       ${bottomRow}
       <div class="card-meta">
         <span class="platform-badge">${t('platform.' + s.platform) || s.platform}</span>
-        <div class="card-tags">${tags}</div>
         <div class="card-icons">${fileIcon}${kudosIcon}${urlIcon}</div>
       </div>
     </article>`;
@@ -1271,10 +1349,12 @@ function openDetail(s) {
     deleteBtn.textContent = 'Deleting…';
     try {
       await deleteStory(s.id);
-      allStories = allStories.filter(x => x.id !== s.id);
+      _currentPageData = _currentPageData.filter(x => x.id !== s.id);
+      _totalElements   = Math.max(0, _totalElements - 1);
       closeDetail();
-      applyFilters();
-      updateCount(allStories.length);
+      renderCards(_currentPageData);
+      updateCount(_totalElements);
+      if (_currentPageData.length === 0 && _curPage > 0) _fetchPage(_curPage - 1);
     } catch (err) {
       deleteBtn.disabled = false;
       deleteBtn.textContent = 'Delete failed';
@@ -1490,8 +1570,8 @@ function loadPersonalNote(storyId, currentNote) {
         if (res.status === 401) { handleUnauthorized(); return; }
         const body = await res.json();
         const updated = body.data;
-        const idx = allStories.findIndex(x => x.id === storyId);
-        if (idx !== -1) allStories[idx].personalNotes = updated.personalNotes;
+        const idx = _currentPageData.findIndex(x => x.id === storyId);
+        if (idx !== -1) _currentPageData[idx].personalNotes = updated.personalNotes;
         status.textContent = 'Saved';
         status.style.display = 'inline';
         setTimeout(() => { status.style.display = 'none'; }, 2000);
@@ -1549,8 +1629,8 @@ function loadDetailLabels(storyId, currentLabels) {
           });
           if (res.status === 401) { handleUnauthorized(); return; }
           const next = labels.filter(l => String(l.id) !== labelId);
-          const idx = allStories.findIndex(x => x.id === storyId);
-          if (idx !== -1) allStories[idx].labels = next;
+          const idx = _currentPageData.findIndex(x => x.id === storyId);
+          if (idx !== -1) _currentPageData[idx].labels = next;
           render(next);
         } catch { btn.disabled = false; }
       });
@@ -1653,8 +1733,8 @@ function loadDetailCollections(storyId, currentCollections) {
 }
 
 function patchStoryCollections(storyId, collections) {
-  const idx = allStories.findIndex(s => s.id === storyId);
-  if (idx !== -1) allStories[idx] = { ...allStories[idx], collections };
+  const idx = _currentPageData.findIndex(s => s.id === storyId);
+  if (idx !== -1) _currentPageData[idx] = { ..._currentPageData[idx], collections };
 }
 
 function closeDetail() {
@@ -1817,11 +1897,10 @@ function bindEvents() {
     btn.addEventListener('click', () => setMetal(btn.dataset.metal));
   });
   el('refresh-btn').addEventListener('click', () => {
-    advancedMode = false;
     quickFilters = {};
     el('adv-chips').innerHTML = '';
     renderQuickFilterChips();
-    fetchStories();
+    _fetchPage(0);
   });
 
   el('quick-filter-chips').addEventListener('click', e => {
@@ -1883,48 +1962,75 @@ function bindEvents() {
   // Single delegated listeners for the cards grid — covers all cards past and future.
   const grid = el('cards-grid');
   grid.addEventListener('click', e => {
+    // Summary expand/collapse
+    const summaryToggle = e.target.closest('.card-summary-toggle');
+    if (summaryToggle) {
+      e.stopPropagation();
+      const wrap    = summaryToggle.closest('.card-summary-wrap');
+      const summary = wrap ? wrap.querySelector('.card-summary') : null;
+      const expanded = summaryToggle.getAttribute('aria-expanded') === 'true';
+      if (expanded) {
+        summaryToggle.setAttribute('aria-expanded', 'false');
+        summaryToggle.textContent = 'Show more';
+        if (summary) summary.classList.add('card-summary--clamped');
+      } else {
+        summaryToggle.setAttribute('aria-expanded', 'true');
+        summaryToggle.textContent = 'Show less';
+        if (summary) summary.classList.remove('card-summary--clamped');
+      }
+      return;
+    }
+
+    // Tag +N more expand/collapse
+    const tagMore = e.target.closest('.card-tag-more');
+    if (tagMore) {
+      e.stopPropagation();
+      const section = tagMore.closest('.card-tags-section');
+      const extra   = section ? section.querySelector('.card-tags-extra') : null;
+      const expanded = tagMore.getAttribute('aria-expanded') === 'true';
+      if (expanded) {
+        tagMore.setAttribute('aria-expanded', 'false');
+        tagMore.textContent = '+' + tagMore.dataset.count + ' more';
+        if (extra) extra.classList.add('hidden');
+      } else {
+        tagMore.setAttribute('aria-expanded', 'true');
+        tagMore.textContent = 'Show less';
+        if (extra) extra.classList.remove('hidden');
+      }
+      return;
+    }
+
+    // Quick filter buttons (data-filter-key)
     const filterBtn = e.target.closest('[data-filter-key]');
     if (filterBtn) {
       e.stopPropagation();
       setQuickFilter(filterBtn.dataset.filterKey, filterBtn.dataset.filterVal);
       return;
     }
+
+    // Card click → open detail
     const card = e.target.closest('.story-card');
     if (card) {
       const sid = Number(card.dataset.id);
-      const s = _advResults.find(x => x.id === sid) || allStories.find(x => x.id === sid);
+      const s   = _currentPageData.find(x => x.id === sid);
       if (s) openDetail(s);
     }
   });
+
   grid.addEventListener('keydown', e => {
     if (e.key !== 'Enter' && e.key !== ' ') return;
     const card = e.target.closest('.story-card');
     if (card) {
       e.preventDefault();
       const sid = Number(card.dataset.id);
-      const s = _advResults.find(x => x.id === sid) || allStories.find(x => x.id === sid);
+      const s   = _currentPageData.find(x => x.id === sid);
       if (s) openDetail(s);
     }
   });
 
-  el('pg-prev').addEventListener('click', () => _goToPage(_displayPage - 1));
-  el('pg-next').addEventListener('click', () => _goToPage(_displayPage + 1));
-  el('pg-jump-btn').addEventListener('click', () => {
-    const n = parseInt(el('pg-jump').value, 10);
-    if (!isNaN(n) && n >= 1) _goToPage(n - 1);
-  });
-  el('pg-jump').addEventListener('keydown', e => {
-    if (e.key === 'Enter') {
-      const n = parseInt(el('pg-jump').value, 10);
-      if (!isNaN(n) && n >= 1) _goToPage(n - 1);
-    }
-  });
-  el('pagination-controls').addEventListener('click', e => {
-    const sizeBtn = e.target.closest('.pg-size-btn');
-    if (!sizeBtn) return;
-    _pageSize = Number(sizeBtn.dataset.size);
-    if (advancedMode) { _advPage = 0; _fetchAdvancedPage(0); }
-    else { _displayPage = 0; _showPage(); }
+  // Restore state on browser back/forward
+  window.addEventListener('popstate', () => {
+    if (token && vaultOpen) { _syncFromUrl(); _fetchPage(_curPage); }
   });
 
   initCompactHeader();
