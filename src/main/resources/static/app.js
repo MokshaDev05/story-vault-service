@@ -1652,8 +1652,8 @@ function loadDetailLabels(storyId, currentLabels) {
           const added = allLabels.find(l => String(l.id) === labelId);
           if (added) {
             const next = [...labels, { id: added.id, name: added.name }];
-            const idx = allStories.findIndex(x => x.id === storyId);
-            if (idx !== -1) allStories[idx].labels = next;
+            const idx = _currentPageData.findIndex(x => x.id === storyId);
+            if (idx !== -1) _currentPageData[idx].labels = next;
             render(next);
           }
         } catch { addBtn.disabled = false; }
