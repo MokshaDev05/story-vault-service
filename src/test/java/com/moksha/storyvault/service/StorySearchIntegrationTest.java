@@ -3,6 +3,7 @@ package com.moksha.storyvault.service;
 import com.moksha.storyvault.dto.PagedApiResponse;
 import com.moksha.storyvault.dto.StoryResponse;
 import com.moksha.storyvault.dto.StorySearchRequest;
+import com.moksha.storyvault.dto.StorySearchRequest.SortField;
 import com.moksha.storyvault.model.Story;
 import com.moksha.storyvault.model.Tag;
 import com.moksha.storyvault.model.User;
@@ -24,6 +25,7 @@ import org.springframework.security.authentication.UsernamePasswordAuthenticatio
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
@@ -384,5 +386,109 @@ class StorySearchIntegrationTest {
                 .containsExactly("Apple", "Mango");
         assertThat(page1.getData()).extracting(StoryResponse::getTitle)
                 .containsExactly("Zebra");
+    }
+
+    // ── Recency sort ──────────────────────────────────────────────────────────
+
+    private Story saveWithLastAccessed(String title, LocalDateTime lastAccessed) {
+        return storyRepository.saveAndFlush(Story.builder()
+                .title(title).author("Author").fandom("Fandom")
+                .platform(Platform.AO3).status(StoryStatus.ONGOING).rating(Rating.NOT_RATED)
+                .lastAccessedAt(lastAccessed).user(user).build());
+    }
+
+    @Test
+    void recencySort_recentlyRead_orders_newest_first_never_read_last() {
+        LocalDateTime old    = LocalDateTime.of(2024, 1, 1, 12, 0);
+        LocalDateTime recent = LocalDateTime.of(2025, 6, 1, 12, 0);
+        saveWithLastAccessed("Old Read",    old);
+        saveWithLastAccessed("Recent Read", recent);
+        saveWithLastAccessed("Never Read",  null);
+
+        List<StoryResponse> results = search(
+                StorySearchRequest.builder().sortBy(SortField.RECENTLY_READ).build());
+
+        assertThat(results).extracting(StoryResponse::getTitle)
+                .containsExactly("Recent Read", "Old Read", "Never Read");
+    }
+
+    @Test
+    void recencySort_longestAgoRead_orders_oldest_first_never_read_last() {
+        LocalDateTime old    = LocalDateTime.of(2024, 1, 1, 12, 0);
+        LocalDateTime recent = LocalDateTime.of(2025, 6, 1, 12, 0);
+        saveWithLastAccessed("Old Read",    old);
+        saveWithLastAccessed("Recent Read", recent);
+        saveWithLastAccessed("Never Read",  null);
+
+        List<StoryResponse> results = search(
+                StorySearchRequest.builder().sortBy(SortField.LONGEST_AGO_READ).build());
+
+        assertThat(results).extracting(StoryResponse::getTitle)
+                .containsExactly("Old Read", "Recent Read", "Never Read");
+    }
+
+    @Test
+    void recencySort_neverReadFirst_shows_null_before_non_null() {
+        LocalDateTime old    = LocalDateTime.of(2024, 1, 1, 12, 0);
+        LocalDateTime recent = LocalDateTime.of(2025, 6, 1, 12, 0);
+        saveWithLastAccessed("Old Read",    old);
+        saveWithLastAccessed("Recent Read", recent);
+        saveWithLastAccessed("Never Read",  null);
+
+        List<StoryResponse> results = search(
+                StorySearchRequest.builder().sortBy(SortField.NEVER_READ_FIRST).build());
+
+        assertThat(results).extracting(StoryResponse::getTitle)
+                .containsExactly("Never Read", "Old Read", "Recent Read");
+    }
+
+    @Test
+    void recencySort_neverReadLast_shows_null_after_non_null() {
+        LocalDateTime old    = LocalDateTime.of(2024, 1, 1, 12, 0);
+        LocalDateTime recent = LocalDateTime.of(2025, 6, 1, 12, 0);
+        saveWithLastAccessed("Old Read",    old);
+        saveWithLastAccessed("Recent Read", recent);
+        saveWithLastAccessed("Never Read",  null);
+
+        List<StoryResponse> results = search(
+                StorySearchRequest.builder().sortBy(SortField.NEVER_READ_LAST).build());
+
+        assertThat(results).extracting(StoryResponse::getTitle)
+                .containsExactly("Recent Read", "Old Read", "Never Read");
+    }
+
+    @Test
+    void recencySort_equal_dates_sort_stably_by_title() {
+        LocalDateTime same = LocalDateTime.of(2025, 3, 15, 10, 0);
+        saveWithLastAccessed("Zebra", same);
+        saveWithLastAccessed("Apple", same);
+        saveWithLastAccessed("Mango", same);
+
+        List<StoryResponse> results = search(
+                StorySearchRequest.builder().sortBy(SortField.RECENTLY_READ).build());
+
+        assertThat(results).extracting(StoryResponse::getTitle)
+                .containsExactly("Apple", "Mango", "Zebra");
+    }
+
+    @Test
+    void recencySort_stable_across_pages() {
+        LocalDateTime t1 = LocalDateTime.of(2025, 5, 1, 12, 0);
+        LocalDateTime t2 = LocalDateTime.of(2025, 4, 1, 12, 0);
+        LocalDateTime t3 = LocalDateTime.of(2025, 3, 1, 12, 0);
+        saveWithLastAccessed("P-2025-05", t1);
+        saveWithLastAccessed("P-2025-04", t2);
+        saveWithLastAccessed("P-2025-03", t3);
+        saveWithLastAccessed("Q-Never-A", null);
+        saveWithLastAccessed("Q-Never-B", null);
+
+        StorySearchRequest req = StorySearchRequest.builder().sortBy(SortField.RECENTLY_READ).build();
+        PagedApiResponse<StoryResponse> page0 = storyService.advancedSearch(req, 0, 3);
+        PagedApiResponse<StoryResponse> page1 = storyService.advancedSearch(req, 1, 3);
+
+        assertThat(page0.getData()).extracting(StoryResponse::getTitle)
+                .containsExactly("P-2025-05", "P-2025-04", "P-2025-03");
+        assertThat(page1.getData()).extracting(StoryResponse::getTitle)
+                .containsExactly("Q-Never-A", "Q-Never-B");
     }
 }

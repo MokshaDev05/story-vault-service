@@ -1916,6 +1916,8 @@ function bindEvents() {
   el('adv-toggle-btn').addEventListener('click', toggleAdvPanel);
   el('adv-search-btn').addEventListener('click', runAdvancedSearch);
   el('adv-clear-btn').addEventListener('click', clearAdvancedSearch);
+  el('adv-sort-by').addEventListener('change', applyFilters);
+  el('adv-sort-dir').addEventListener('change', applyFilters);
   el('adv-search-btn').closest('form')?.addEventListener('submit', e => e.preventDefault());
 
   el('add-form').addEventListener('submit', submitAdd);

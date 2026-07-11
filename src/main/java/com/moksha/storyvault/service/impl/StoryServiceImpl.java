@@ -545,7 +545,11 @@ public class StoryServiceImpl implements StoryService {
                 ? req.getSortBy() : StorySearchRequest.SortField.LAST_ACCESSED;
         boolean descending  = !"asc".equalsIgnoreCase(req.getSortDir());
         boolean historySort = sortBy == StorySearchRequest.SortField.FIRST_ACCESSED
-                           || sortBy == StorySearchRequest.SortField.ACCESS_COUNT;
+                           || sortBy == StorySearchRequest.SortField.ACCESS_COUNT
+                           || sortBy == StorySearchRequest.SortField.RECENTLY_READ
+                           || sortBy == StorySearchRequest.SortField.LONGEST_AGO_READ
+                           || sortBy == StorySearchRequest.SortField.NEVER_READ_FIRST
+                           || sortBy == StorySearchRequest.SortField.NEVER_READ_LAST;
 
         // ── Path A: DB-side pagination (9 of 11 sort fields) ─────────────────
         if (!historySort) {
@@ -585,8 +589,13 @@ public class StoryServiceImpl implements StoryService {
                 readingHistoryRepository.findStatsByStoryIds(allIds).stream()
                         .collect(Collectors.toMap(ReadingHistoryStats::getStoryId, s -> s));
 
+        // Recency sorts encode direction in their name; sortDir is ignored for them.
+        boolean fixedDirection = sortBy == StorySearchRequest.SortField.RECENTLY_READ
+                              || sortBy == StorySearchRequest.SortField.LONGEST_AGO_READ
+                              || sortBy == StorySearchRequest.SortField.NEVER_READ_FIRST
+                              || sortBy == StorySearchRequest.SortField.NEVER_READ_LAST;
         Comparator<Story> comp = buildComparator(sortBy, statsMap);
-        if (descending) comp = comp.reversed();
+        if (descending && !fixedDirection) comp = comp.reversed();
         List<Story> sorted = stories.stream().sorted(comp).collect(Collectors.toList());
 
         long totalElements = sorted.size();
@@ -635,6 +644,25 @@ public class StoryServiceImpl implements StoryService {
             case FIRST_ACCESSED -> Comparator.comparing(
                     (Story s) -> statsMap.containsKey(s.getId()) ? statsMap.get(s.getId()).getFirstAccessedAt() : null,
                     Comparator.<LocalDateTime>nullsLast(Comparator.naturalOrder()));
+            // ── Recency sorts: direction and null placement embedded in name ──────
+            case RECENTLY_READ, NEVER_READ_LAST ->
+                    // DESC NULLS LAST: most recently read first, never-read at end
+                    Comparator.<Story, LocalDateTime>comparing(Story::getLastAccessedAt,
+                                    Comparator.nullsLast(Comparator.reverseOrder()))
+                            .thenComparing(Story::getTitle, Comparator.nullsLast(String.CASE_INSENSITIVE_ORDER))
+                            .thenComparingLong(Story::getId);
+            case LONGEST_AGO_READ ->
+                    // ASC NULLS LAST: oldest read first, never-read at end
+                    Comparator.<Story, LocalDateTime>comparing(Story::getLastAccessedAt,
+                                    Comparator.nullsLast(Comparator.naturalOrder()))
+                            .thenComparing(Story::getTitle, Comparator.nullsLast(String.CASE_INSENSITIVE_ORDER))
+                            .thenComparingLong(Story::getId);
+            case NEVER_READ_FIRST ->
+                    // ASC NULLS FIRST: never-read first, then oldest read
+                    Comparator.<Story, LocalDateTime>comparing(Story::getLastAccessedAt,
+                                    Comparator.nullsFirst(Comparator.naturalOrder()))
+                            .thenComparing(Story::getTitle, Comparator.nullsLast(String.CASE_INSENSITIVE_ORDER))
+                            .thenComparingLong(Story::getId);
             default -> Comparator.comparing(Story::getLastAccessedAt,
                     Comparator.nullsLast(Comparator.naturalOrder()));
         };
