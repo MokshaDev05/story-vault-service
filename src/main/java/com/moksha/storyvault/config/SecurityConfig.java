@@ -59,7 +59,11 @@ public class SecurityConfig {
     @Bean
     CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration config = new CorsConfiguration();
-        config.setAllowedOriginPatterns(List.of("http://localhost:*", "chrome-extension://*"));
+        config.setAllowedOriginPatterns(List.of(
+                "http://localhost:*",
+                "chrome-extension://*",
+                "https://archiveofourown.org",
+                "https://d3sghp6vptf9za.cloudfront.net"));
         config.setAllowedMethods(List.of("GET", "POST", "PUT", "DELETE", "OPTIONS"));
         config.setAllowedHeaders(List.of("Content-Type", "Authorization", "Accept"));
         config.setAllowCredentials(false);
