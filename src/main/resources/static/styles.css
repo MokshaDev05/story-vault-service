@@ -1303,6 +1303,110 @@ button.detail-author:hover { color: var(--metal); }
   display: inline-block;
 }
 
+/* ─── Card byline (Author • Fandom) ─────────────────────────────────────── */
+.card-byline {
+  font-size: 12px;
+  font-family: var(--font-serif);
+  color: var(--text-sec);
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+}
+.card-byline-btn {
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  font-size: 12px;
+  font-family: var(--font-serif);
+  color: var(--text-sec);
+  transition: color var(--ease);
+  line-height: inherit;
+}
+.card-byline-btn:hover { color: var(--metal); background: none; }
+.card-byline-fandom {
+  font-size: 10px;
+  font-weight: 700;
+  font-family: var(--font-ui);
+  letter-spacing: .10em;
+  text-transform: uppercase;
+  color: var(--metal);
+  opacity: .80;
+}
+.card-byline-fandom:hover { opacity: 1; color: var(--metal-soft); background: none; }
+.card-byline-sep { color: var(--text-muted); }
+
+/* ─── Inline tags ────────────────────────────────────────────────────────── */
+.card-tags-inline {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.card-tags-label {
+  font-family: var(--font-ui);
+  font-size: 9px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .10em;
+  color: var(--text-muted);
+}
+.card-tags-content {
+  font-family: var(--font-ui);
+  font-size: 11px;
+  color: var(--text-muted);
+  line-height: 1.65;
+}
+.card-tag-inline-btn {
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  font-family: var(--font-ui);
+  font-size: 11px;
+  color: var(--text-muted);
+  transition: color var(--ease);
+  line-height: inherit;
+}
+.card-tag-inline-btn:hover { color: var(--metal); background: none; }
+.card-tag-ship { color: var(--metal); opacity: .75; }
+.card-tag-ship:hover { opacity: 1; }
+.card-tag-inline-text { font-size: 11px; color: var(--text-muted); }
+.card-tag-sep { color: var(--border); }
+.card-tags-inline .card-tag-more { margin-top: 0; }
+
+/* ─── Stats row ──────────────────────────────────────────────────────────── */
+.card-stats {
+  font-family: var(--font-ui);
+  font-size: 11px;
+  color: var(--text-muted);
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 1px;
+  margin-top: auto;
+}
+.card-stat-stars {
+  color: var(--metal-soft);
+  font-size: 11px;
+  letter-spacing: 1px;
+}
+.card-stat-item { white-space: nowrap; }
+.card-stat-sep { color: var(--border); white-space: pre; }
+
+/* ─── Card extras (collections, labels, icons) ───────────────────────────── */
+.card-extras {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+.card-extras-icons {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
 /* ─── Empty state ────────────────────────────────────────────────────────── */
 .empty-state {
   text-align: center;

@@ -1125,6 +1125,35 @@ function _tagPillHTML(tag) {
   }
 }
 
+// ── Rating → stars (NOT_RATED hidden; GENERAL=2…EXPLICIT=5) ─────────────────
+function ratingStars(rating) {
+  const n = { GENERAL: 2, TEEN: 3, MATURE: 4, EXPLICIT: 5 }[rating];
+  return n ? '★'.repeat(n) + '☆'.repeat(5 - n) : '';
+}
+
+// ── Word count abbreviation ───────────────────────────────────────────────────
+function fmtWords(n) {
+  if (!n) return null;
+  if (n >= 1_000_000) return (n / 1_000_000).toFixed(1).replace(/\.0$/, '') + 'M';
+  if (n >= 1_000)     return Math.round(n / 1_000) + 'k';
+  return String(n);
+}
+
+// ── Relative date ("Yesterday", "3 weeks ago", etc.) ─────────────────────────
+function relDate(iso) {
+  if (!iso) return null;
+  const d = Math.floor((Date.now() - new Date(iso)) / 86_400_000);
+  if (d <= 0)  return 'Today';
+  if (d === 1) return 'Yesterday';
+  if (d < 7)   return d + ' days ago';
+  if (d < 14)  return '1 week ago';
+  if (d < 30)  return Math.floor(d / 7) + ' weeks ago';
+  if (d < 60)  return '1 month ago';
+  if (d < 365) return Math.floor(d / 30) + ' months ago';
+  if (d < 730) return '1 year ago';
+  return Math.floor(d / 365) + ' years ago';
+}
+
 function renderCards(stories) {
   const grid  = el('cards-grid');
   const empty = el('empty-state');
@@ -1140,15 +1169,7 @@ function renderCards(stories) {
 }
 
 function cardHTML(s) {
-  const officialChip = `<span class="chip chip-${s.status.toLowerCase()}">${t('status.' + s.status) || s.status}</span>`;
-  const badgeArea = s.readingStatus
-    ? `<div class="badge-stack">
-        <span class="chip chip-rs-${s.readingStatus.toLowerCase().replace(/_/g, '-')}">${t('readingStatus.' + s.readingStatus) || s.readingStatus}</span>
-        ${officialChip}
-       </div>`
-    : officialChip;
-
-  // ── Summary ──
+  // ── Summary ──────────────────────────────────────────────────────────────────
   const rawSummary = (s.summary || '').trim();
   let summaryHTML;
   if (!rawSummary) {
@@ -1162,34 +1183,67 @@ function cardHTML(s) {
       </div>`;
   }
 
-  // ── Tags ──
-  const allTags    = _prioritizedTags(s);
-  const preview    = allTags.slice(0, TAGS_PREVIEW_LIMIT);
-  const extra      = allTags.slice(TAGS_PREVIEW_LIMIT);
-  const moreCount  = extra.length;
-  const previewHTML = preview.map(_tagPillHTML).join('');
-  const extraHTML   = extra.map(_tagPillHTML).join('');
-  const tagsHTML = `
-    <div class="card-tags-section">
-      <div class="card-tags-preview">
-        ${previewHTML}
-        ${moreCount > 0 ? `<button class="card-tag-more" data-count="${moreCount}" aria-expanded="false">+${moreCount} more</button>` : ''}
-      </div>
-      ${moreCount > 0 ? `<div class="card-tags-extra hidden">${extraHTML}</div>` : ''}
-    </div>`;
+  // ── Inline tags ───────────────────────────────────────────────────────────────
+  const allTags   = _prioritizedTags(s);
+  const preview   = allTags.slice(0, TAGS_PREVIEW_LIMIT);
+  const extra     = allTags.slice(TAGS_PREVIEW_LIMIT);
+  const moreCount = extra.length;
 
+  const SEP = `<span class="card-tag-sep" aria-hidden="true"> • </span>`;
+  const _itag = tag => {
+    if (tag.type === 'tag')
+      return `<button class="card-tag-inline-btn" data-filter-key="tag" data-filter-val="${escA(tag.text)}">${esc(tag.text)}</button>`;
+    if (tag.type === 'relationship')
+      return `<button class="card-tag-inline-btn card-tag-ship" data-filter-key="relationship" data-filter-val="${escA(tag.text)}">${esc(tag.text)}</button>`;
+    return `<span class="card-tag-inline-text">${esc(tag.text)}</span>`;
+  };
+
+  let tagsHTML = '';
+  if (allTags.length > 0) {
+    const moreBtn  = moreCount > 0
+      ? SEP + `<button class="card-tag-more" data-count="${moreCount}" aria-expanded="false">+${moreCount} more</button>`
+      : '';
+    const extraSpan = moreCount > 0
+      ? `<span class="card-tags-extra hidden">${SEP}${extra.map(_itag).join(SEP)}</span>`
+      : '';
+    tagsHTML = `
+      <div class="card-tags-inline">
+        <span class="card-tags-label">Tags</span>
+        <div class="card-tags-content">${preview.map(_itag).join(SEP)}${moreBtn}${extraSpan}</div>
+      </div>`;
+  }
+
+  // ── Stats row ─────────────────────────────────────────────────────────────────
+  const SDOT = `<span class="card-stat-sep" aria-hidden="true"> · </span>`;
+  const stars    = ratingStars(s.rating);
+  const words    = fmtWords(s.wordCount);
+  const chapters = s.chapterCount != null ? s.chapterCount : null;
+  const lastRead = s.lastAccessedAt ? relDate(s.lastAccessedAt) : null;
+  const statParts = [
+    stars    ? `<span class="card-stat-stars" title="${esc(t('rating.' + s.rating) || s.rating)}">${stars}</span>` : null,
+    words    ? `<span class="card-stat-item">Words: ${words}</span>` : null,
+    chapters != null ? `<span class="card-stat-item">Chapters: ${chapters}</span>` : null,
+    lastRead ? `<span class="card-stat-item">Last Read: ${lastRead}</span>` : null,
+  ].filter(Boolean);
+  const statsHTML = statParts.length
+    ? `<div class="card-stats">${statParts.join(SDOT)}</div>`
+    : '';
+
+  // ── Extras (collections, labels, icons) ───────────────────────────────────────
   const continueCardUrl = s.currentChapterUrl || s.originalUrl;
-  const urlIcon  = continueCardUrl
+  const urlIcon    = continueCardUrl
     ? `<a href="${escA(continueCardUrl)}" target="_blank" rel="noopener noreferrer" class="card-url-link" title="${s.currentChapterUrl ? 'Continue Reading' : 'Open original'}" onclick="event.stopPropagation()">↗</a>`
     : '';
-  const fileIcon  = s.hasFile    ? `<span class="card-file-icon" title="File attached">◎</span>` : '';
-  const kudosIcon = showKudos && s.kudosStatus === 'GIVEN' ? `<span class="card-kudos-icon" title="Kudosed">♥</span>` : '';
-  const collChips = showChips ? (s.collections || []).slice(0, 3).map(c =>
+  const fileIcon   = s.hasFile ? `<span class="card-file-icon" title="File attached">◎</span>` : '';
+  const kudosIcon  = showKudos && s.kudosStatus === 'GIVEN' ? `<span class="card-kudos-icon" title="Kudosed">♥</span>` : '';
+  const collChips  = showChips ? (s.collections || []).slice(0, 3).map(c =>
     `<span class="collection-chip collection-chip-card">${esc(c.name)}</span>`).join('') : '';
   const labelChips = (s.labels || []).slice(0, 3).map(l =>
     `<span class="label-chip label-chip-card">${esc(l.name)}</span>`).join('');
-  const bottomRow = (collChips || labelChips)
-    ? `<div class="card-collections">${collChips}${labelChips}</div>` : '';
+  const icons      = fileIcon + kudosIcon + urlIcon;
+  const extrasRow  = (collChips || labelChips || icons)
+    ? `<div class="card-extras">${collChips}${labelChips}<span class="card-extras-icons">${icons}</span></div>`
+    : '';
 
   return `
     <article class="story-card" data-id="${s.id}" tabindex="0" role="button" aria-label="${escA(s.title)}">
@@ -1197,20 +1251,16 @@ function cardHTML(s) {
       <span class="card-corner card-corner-tr" aria-hidden="true">◈</span>
       <span class="card-corner card-corner-bl" aria-hidden="true">◈</span>
       <span class="card-corner card-corner-br" aria-hidden="true">◈</span>
-      <div class="card-top">
-        <button class="card-fandom" data-filter-key="fandom" data-filter-val="${escA(s.fandom)}">${esc(s.fandom)}</button>
-        ${badgeArea}
-      </div>
       <h2 class="card-title">${esc(s.title)}</h2>
-      <p class="card-author">by <button class="card-author-btn" data-filter-key="author" data-filter-val="${escA(s.author)}">${esc(s.author)}</button></p>
-      <div class="card-rule"></div>
+      <p class="card-byline">
+        <button class="card-byline-btn" data-filter-key="author" data-filter-val="${escA(s.author)}">${esc(s.author)}</button>
+        <span class="card-byline-sep" aria-hidden="true"> • </span>
+        <button class="card-byline-btn card-byline-fandom" data-filter-key="fandom" data-filter-val="${escA(s.fandom)}">${esc(s.fandom)}</button>
+      </p>
       <div class="card-summary-section">${summaryHTML}</div>
       ${tagsHTML}
-      ${bottomRow}
-      <div class="card-meta">
-        <span class="platform-badge">${t('platform.' + s.platform) || s.platform}</span>
-        <div class="card-icons">${fileIcon}${kudosIcon}${urlIcon}</div>
-      </div>
+      ${statsHTML}
+      ${extrasRow}
     </article>`;
 }
 
@@ -1984,7 +2034,7 @@ function bindEvents() {
     const tagMore = e.target.closest('.card-tag-more');
     if (tagMore) {
       e.stopPropagation();
-      const section = tagMore.closest('.card-tags-section');
+      const section = tagMore.closest('.card-tags-section, .card-tags-inline');
       const extra   = section ? section.querySelector('.card-tags-extra') : null;
       const expanded = tagMore.getAttribute('aria-expanded') === 'true';
       if (expanded) {
