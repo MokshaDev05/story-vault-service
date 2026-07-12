@@ -1101,6 +1101,30 @@ body::after {
   font-weight: 400;
   line-height: 1.35;
   color: var(--text);
+  text-align: center;
+  padding: 0 72px;
+  min-height: 38px;
+  margin: 0;
+}
+/* ─── Card status corner (top-right, absolutely positioned) ──────────────── */
+.card-status-corner {
+  position: absolute;
+  top: 18px;
+  right: 18px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 3px;
+  z-index: 1;
+  max-width: 72px;
+}
+/* ─── Card byline (centered author + fandom, stacked) ───────────────────── */
+.card-byline {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  text-align: center;
 }
 .card-author {
   font-size: 12px;
@@ -2825,13 +2849,7 @@ button.card-fandom:hover { opacity: 1; text-decoration: underline; text-underlin
   transition: color var(--ease);
 }
 .stat-show-more:hover { color: var(--accent-hi); }
-/* ─── Card badges row ────────────────────────────────────────────────────── */
-.card-badges {
-  display: flex;
-  gap: 5px;
-  flex-wrap: wrap;
-}
-/* ─── Card meta (words · chapters · last read) ───────────────────────────── */
+/* ─── Card meta (words · chapters · last accessed) ──────────────────────── */
 .card-meta-item {
   font-size: 11px;
   color: var(--text-muted);

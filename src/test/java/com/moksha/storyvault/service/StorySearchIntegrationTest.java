@@ -550,4 +550,91 @@ class StorySearchIntegrationTest {
                 .filter(s -> s.getId().equals(id)).findFirst().orElseThrow();
         assertThat(found.getStatus()).isEqualTo(StoryStatus.COMPLETE);
     }
+
+    // ── Card layout API contract tests ──────────────────────────────────────────
+
+    @Test
+    void lastAccessedAt_isNullAfterCreate_so_frontend_shows_Never() {
+        // Creating a story is not the same as reading it.
+        // lastAccessedAt must remain null until the user genuinely opens the work.
+        StoryRequest req = minimalRequest("LastAccessedDisplayTest");
+        Long id = storyService.create(req).getId();
+
+        StorySearchRequest search = new StorySearchRequest();
+        StoryResponse found = storyService.advancedSearch(search, 0, 20).getData().stream()
+                .filter(s -> s.getId().equals(id)).findFirst().orElseThrow();
+
+        // Field is present in the response (as null) — frontend renders "Last accessed: Never"
+        assertThat(found.getLastAccessedAt()).isNull();
+    }
+
+    @Test
+    void lastAccessedAt_null_in_db_returns_null_in_response_for_Never_display() {
+        // Insert a story directly with no lastAccessedAt to verify null passes through
+        Story bare = storyRepository.save(Story.builder()
+                .title("NullAccessTest")
+                .author("Author")
+                .fandom("Fandom")
+                .platform(Platform.AO3)
+                .user(user)
+                .build());
+
+        StorySearchRequest search = new StorySearchRequest();
+        StoryResponse found = storyService.advancedSearch(search, 0, 20).getData().stream()
+                .filter(s -> s.getId().equals(bare.getId())).findFirst().orElseThrow();
+
+        // Null passes through — frontend renders "Last accessed: Never"
+        assertThat(found.getLastAccessedAt()).isNull();
+    }
+
+    @Test
+    void storyStatus_is_from_stored_value_not_inferred() {
+        // ONGOING status must come from the field, not inferred from chapter count
+        StoryRequest req = minimalRequest("InferenceTest");
+        req.setStatus(StoryStatus.ONGOING);
+        req.setChapterCount(1);
+        req.setTotalChapters(1); // equal chapters — don't infer COMPLETE
+        Long id = storyService.create(req).getId();
+
+        StorySearchRequest search = new StorySearchRequest();
+        StoryResponse found = storyService.advancedSearch(search, 0, 20).getData().stream()
+                .filter(s -> s.getId().equals(id)).findFirst().orElseThrow();
+
+        assertThat(found.getStatus()).isEqualTo(StoryStatus.ONGOING);
+    }
+
+    @Test
+    void tags_relationships_categories_warnings_all_returned_in_response() {
+        // Verify all four tag-type fields are present in the response
+        StoryRequest req = minimalRequest("AllTagTypesTest");
+        req.setTags(Set.of("slow burn", "angst"));
+        req.setRelationships(List.of("Character A/Character B"));
+        req.setCategories(List.of("M/M"));
+        req.setArchiveWarnings(List.of("Creator Chose Not To Use Archive Warnings"));
+        Long id = storyService.create(req).getId();
+
+        StorySearchRequest search = new StorySearchRequest();
+        StoryResponse found = storyService.advancedSearch(search, 0, 20).getData().stream()
+                .filter(s -> s.getId().equals(id)).findFirst().orElseThrow();
+
+        assertThat(found.getTags()).contains("slow burn", "angst");
+        assertThat(found.getRelationships()).contains("Character A/Character B");
+        assertThat(found.getCategories()).contains("M/M");
+        assertThat(found.getArchiveWarnings()).contains("Creator Chose Not To Use Archive Warnings");
+    }
+
+    @Test
+    void wordCount_and_chapterCount_returned_in_response_for_meta_row() {
+        StoryRequest req = minimalRequest("MetaRowTest");
+        req.setWordCount(87_450);
+        req.setChapterCount(42);
+        Long id = storyService.create(req).getId();
+
+        StorySearchRequest search = new StorySearchRequest();
+        StoryResponse found = storyService.advancedSearch(search, 0, 20).getData().stream()
+                .filter(s -> s.getId().equals(id)).findFirst().orElseThrow();
+
+        assertThat(found.getWordCount()).isEqualTo(87_450);
+        assertThat(found.getChapterCount()).isEqualTo(42);
+    }
 }

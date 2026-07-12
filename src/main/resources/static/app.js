@@ -1183,14 +1183,16 @@ function cardHTML(s) {
       </div>`;
   }
 
-  // ── Badges (reading status + story status) ────────────────────────────────────
+  // ── Status badges (top-right corner, absolutely positioned) ──────────────────
   const rsChip = s.readingStatus
     ? `<span class="chip chip-rs-${s.readingStatus.toLowerCase().replace(/_/g, '-')}">${t('readingStatus.' + s.readingStatus) || s.readingStatus}</span>`
     : '';
   const ssChip = s.status
     ? `<span class="chip chip-${s.status.toLowerCase()}">${t('status.' + s.status) || s.status}</span>`
     : '';
-  const badgesHTML = (rsChip || ssChip) ? `<div class="card-badges">${rsChip}${ssChip}</div>` : '';
+  const badgesHTML = (rsChip || ssChip)
+    ? `<div class="card-status-corner" aria-label="Status">${rsChip}${ssChip}</div>`
+    : '';
 
   // ── Tag pill chips ────────────────────────────────────────────────────────────
   const allTags   = _prioritizedTags(s);
@@ -1213,21 +1215,19 @@ function cardHTML(s) {
       </div>`;
   }
 
-  // ── Meta row (words · chapters · last read) ───────────────────────────────────
-  const accessedDiff = s.lastAccessedAt && s.createdAt
-    ? new Date(s.lastAccessedAt) - new Date(s.createdAt)
-    : 0;
-  const showLastRead = accessedDiff > 86_400_000;
-
+  // ── Meta row: Words · Chapters · Last accessed (always shown) ───────────────
   const MDOT = `<span class="card-meta-sep" aria-hidden="true"> · </span>`;
+  const lastAccDate   = s.lastAccessedAt ? new Date(s.lastAccessedAt) : null;
+  const lastAccText   = lastAccDate ? relDate(s.lastAccessedAt) : 'Never';
+  const lastAccTooltip = lastAccDate
+    ? lastAccDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+    : '';
   const metaParts = [
     s.wordCount      ? `<span class="card-meta-item">Words: ${fmtWords(s.wordCount)}</span>` : null,
     s.chapterCount != null ? `<span class="card-meta-item">Chapters: ${s.chapterCount}</span>` : null,
-    showLastRead     ? `<span class="card-meta-item">Last read ${relDate(s.lastAccessedAt)}</span>` : null,
+    `<span class="card-meta-item"${lastAccTooltip ? ` title="${escA(lastAccTooltip)}"` : ''}>Last accessed: ${lastAccText}</span>`,
   ].filter(Boolean);
-  const metaHTML = metaParts.length
-    ? `<div class="card-meta">${metaParts.join(MDOT)}</div>`
-    : '';
+  const metaHTML = `<div class="card-meta">${metaParts.join(MDOT)}</div>`;
 
   // ── Extras (collections, labels, icons) ───────────────────────────────────────
   const continueCardUrl = s.currentChapterUrl || s.originalUrl;
@@ -1251,10 +1251,12 @@ function cardHTML(s) {
       <span class="card-corner card-corner-tr" aria-hidden="true">◈</span>
       <span class="card-corner card-corner-bl" aria-hidden="true">◈</span>
       <span class="card-corner card-corner-br" aria-hidden="true">◈</span>
-      <h2 class="card-title">${esc(s.title)}</h2>
-      <p class="card-author"><button class="card-author-btn" data-filter-key="author" data-filter-val="${escA(s.author)}">by ${esc(s.author)}</button></p>
-      <p><button class="card-fandom" data-filter-key="fandom" data-filter-val="${escA(s.fandom)}">${esc(s.fandom)}</button></p>
       ${badgesHTML}
+      <h2 class="card-title">${esc(s.title)}</h2>
+      <div class="card-byline">
+        <button class="card-author-btn" data-filter-key="author" data-filter-val="${escA(s.author)}">by ${esc(s.author)}</button>
+        <button class="card-fandom" data-filter-key="fandom" data-filter-val="${escA(s.fandom)}">${esc(s.fandom)}</button>
+      </div>
       <div class="card-summary-section">${summaryHTML}</div>
       ${tagsHTML}
       ${metaHTML}
