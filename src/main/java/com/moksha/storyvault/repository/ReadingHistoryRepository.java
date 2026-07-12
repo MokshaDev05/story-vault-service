@@ -49,11 +49,24 @@ public interface ReadingHistoryRepository extends JpaRepository<ReadingHistory, 
                                                @Param("chapterNumber") Integer chapterNumber);
 
     @Query("""
-        SELECT h.story.id, h.story.title, COUNT(h)
+        SELECT h.story.id, h.story.title, COUNT(h), h.story.chapterCount
         FROM ReadingHistory h
         WHERE h.story.user = :user
-        GROUP BY h.story.id, h.story.title
+        GROUP BY h.story.id, h.story.title, h.story.chapterCount
         ORDER BY COUNT(h) DESC
     """)
     List<Object[]> mostAccessedStoriesByUser(@Param("user") User user, Pageable pageable);
+
+    @Query(value = """
+        SELECT bucket, COUNT(DISTINCT story_id) AS distinct_works
+        FROM (
+            SELECT CAST(DATE_TRUNC(:period, accessed_at) AS text) AS bucket,
+                   story_id
+            FROM reading_history
+            WHERE user_id = :userId
+        ) sub
+        GROUP BY bucket
+        ORDER BY bucket
+    """, nativeQuery = true)
+    List<Object[]> activityByPeriod(@Param("userId") Long userId, @Param("period") String period);
 }

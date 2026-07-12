@@ -15,7 +15,9 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.stream.Collectors;
@@ -111,6 +113,18 @@ public class ReadingHistoryServiceImpl implements ReadingHistoryService {
         return readingHistoryRepository.findByStoryOrderByAccessedAtDesc(story).stream()
                 .map(this::toResponse)
                 .collect(Collectors.toList());
+    }
+
+    @Override
+    public Map<String, Long> getActivitySummary(String period) {
+        String safePeriod = "week".equals(period) ? "week" : "month";
+        User user = securityUtils.currentUser();
+        List<Object[]> rows = readingHistoryRepository.activityByPeriod(user.getId(), safePeriod);
+        Map<String, Long> result = new LinkedHashMap<>();
+        for (Object[] row : rows) {
+            result.put(row[0].toString().substring(0, safePeriod.equals("week") ? 10 : 7), ((Number) row[1]).longValue());
+        }
+        return result;
     }
 
     private ReadingHistoryResponse toResponse(ReadingHistory h) {

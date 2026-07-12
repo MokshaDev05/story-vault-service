@@ -419,7 +419,7 @@ body::after {
 .wordmark-block {
   display: flex;
   flex-direction: column;
-  align-items: center;
+  align-items: flex-start;
   justify-content: center;
   gap: 5px;
   padding: 14px 0;
@@ -430,7 +430,8 @@ body::after {
   display: flex;
   align-items: center;
   gap: 10px;
-  width: 240px;
+  width: 100%;
+  max-width: 280px;
   position: relative;
   z-index: 1;
 }
@@ -483,7 +484,8 @@ body::after {
   display: flex;
   align-items: center;
   gap: 8px;
-  width: 200px;
+  width: 100%;
+  max-width: 220px;
 }
 .crest-top-line {
   flex: 1;
@@ -562,7 +564,7 @@ body::after {
 
 /* ─── Compact header ─────────────────────────────────────────────────────── */
 .site-header.header-compact .header-inner { min-height: 58px; }
-.site-header.header-compact .wordmark-block { padding: 8px 0; gap: 0; }
+.site-header.header-compact .wordmark-block { padding: 8px 0; gap: 0; align-items: flex-start; }
 .site-header.header-compact .crest-top { display: none; }
 .site-header.header-compact .crest-rule { display: none; }
 .site-header.header-compact .wordmark { font-size: 26px; letter-spacing: .05em; }
@@ -1101,9 +1103,7 @@ body::after {
   font-weight: 400;
   line-height: 1.35;
   color: var(--text);
-  text-align: center;
-  padding: 0 72px;
-  min-height: 38px;
+  padding-right: 80px;
   margin: 0;
 }
 /* ─── Card status corner (top-right, absolutely positioned) ──────────────── */
@@ -1122,9 +1122,8 @@ body::after {
 .card-byline {
   display: flex;
   flex-direction: column;
-  align-items: center;
+  align-items: flex-start;
   gap: 3px;
-  text-align: center;
 }
 .card-author {
   font-size: 12px;
@@ -1927,9 +1926,10 @@ button.card-fandom:hover { opacity: 1; text-decoration: underline; text-underlin
   border: none;
   cursor: pointer;
   padding: 0;
-  font-size: 12px;
+  font-size: 13px;
   color: var(--text-sec);
-  font-family: var(--font-ui);
+  font-family: var(--font-serif);
+  font-style: italic;
   transition: color var(--ease);
 }
 .card-author-btn:hover { color: var(--metal); }
@@ -2219,6 +2219,43 @@ button.card-fandom:hover { opacity: 1; text-decoration: underline; text-underlin
   flex-shrink: 0;
 }
 
+/* ─── Page tabs nav ───────────────────────────────────────────────────── */
+.page-tabs {
+  display: flex;
+  align-items: center;
+  gap: 0;
+  background: var(--bg-header);
+  border-bottom: 1px solid var(--metal-border);
+  padding: 0 20px;
+  overflow-x: auto;
+  scrollbar-width: none;
+  position: sticky;
+  top: 0;
+  z-index: 90;
+}
+.page-tabs::-webkit-scrollbar { display: none; }
+.page-tab {
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  padding: 10px 16px;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: color var(--ease), border-color var(--ease);
+  font-family: var(--font-ui);
+  flex-shrink: 0;
+}
+.page-tab:hover { color: var(--metal); }
+.page-tab.page-tab-active {
+  color: var(--metal);
+  border-bottom-color: var(--metal);
+}
+
 /* Nav overlay */
 .nav-overlay {
   position: fixed;
@@ -2377,6 +2414,11 @@ button.card-fandom:hover { opacity: 1; text-decoration: underline; text-underlin
   margin-left: auto;
 }
 
+.nav-privacy-active {
+  color: var(--metal) !important;
+}
+.nav-privacy-active .nav-item-gem { opacity: 1; }
+
 /* ── Views ─────────────────────────────────────────────────────────────────── */
 
 .view { width: 100%; }
@@ -2439,6 +2481,12 @@ button.card-fandom:hover { opacity: 1; text-decoration: underline; text-underlin
   color: var(--text-muted);
   font-style: italic;
   padding: 20px 0;
+}
+.page-helper-note {
+  font-size: 12px;
+  color: var(--text-muted);
+  margin-bottom: 14px;
+  line-height: 1.5;
 }
 
 /* Placeholder pages */
@@ -2752,15 +2800,18 @@ button.card-fandom:hover { opacity: 1; text-decoration: underline; text-underlin
 }
 .stat-bar-row {
   display: grid;
-  grid-template-columns: minmax(140px, 2fr) 2fr auto;
+  grid-template-columns: minmax(100px, 1.8fr) 2fr minmax(32px, auto);
   align-items: center;
-  gap: 8px;
-  margin-bottom: 7px;
+  gap: 10px;
+  padding: 3px 0;
+  margin-bottom: 5px;
 }
 .stat-bar-label {
   font-size: 11px;
   color: var(--text-primary);
   overflow-wrap: break-word;
+  word-break: break-word;
+  line-height: 1.3;
 }
 .stat-bar-track {
   height: 6px;
@@ -2779,13 +2830,21 @@ button.card-fandom:hover { opacity: 1; text-decoration: underline; text-underlin
   font-size: 10px;
   color: var(--text-muted);
   text-align: right;
-  min-width: 24px;
+  white-space: nowrap;
+  min-width: 30px;
 }
 .stat-empty {
   font-size: 11px;
   color: var(--text-muted);
   font-style: italic;
   margin: 4px 0;
+}
+.stat-note {
+  font-size: 10px;
+  color: var(--text-muted);
+  font-style: italic;
+  margin: 0 0 8px;
+  line-height: 1.4;
 }
 
 .stat-story-list {
@@ -2996,6 +3055,98 @@ button.card-fandom:hover { opacity: 1; text-decoration: underline; text-underlin
 .lang-btn:hover:not([disabled]) { background: color-mix(in srgb, var(--accent) 10%, transparent); border-color: var(--accent); }
 .lang-btn-active { background: color-mix(in srgb, var(--accent) 18%, transparent); border-color: var(--accent); font-weight: 600; }
 .lang-btn-unavailable { opacity: .4; cursor: not-allowed; }
+
+/* ─── Reading activity chart ─────────────────────────────────────────── */
+.activity-chart-section {
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 16px 18px;
+  margin-bottom: 16px;
+}
+.activity-chart-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+.activity-chart-title {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  margin: 0;
+}
+.activity-period-toggle {
+  display: flex;
+  gap: 4px;
+}
+.activity-period-btn {
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 2px;
+  padding: 3px 8px;
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-family: var(--font-ui);
+  transition: all var(--ease);
+}
+.activity-period-btn:hover { color: var(--metal); border-color: var(--metal-border); }
+.activity-period-active {
+  color: var(--metal);
+  border-color: var(--metal);
+  background: var(--metal-glow);
+}
+.activity-chart {
+  min-height: 80px;
+}
+.activity-bars {
+  display: flex;
+  align-items: flex-end;
+  gap: 4px;
+  height: 120px;
+  padding-bottom: 32px;
+  overflow-x: auto;
+}
+.activity-bar-col {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-end;
+  min-width: 32px;
+  flex: 1;
+  height: 100%;
+  position: relative;
+  cursor: default;
+}
+.activity-bar-fill {
+  width: 80%;
+  background: var(--accent);
+  border-radius: 2px 2px 0 0;
+  min-height: 2px;
+  transition: height .3s ease;
+}
+.activity-bar-count {
+  font-size: 9px;
+  color: var(--text-muted);
+  position: absolute;
+  bottom: 18px;
+  white-space: nowrap;
+}
+.activity-bar-label {
+  font-size: 8px;
+  color: var(--text-muted);
+  position: absolute;
+  bottom: 0;
+  white-space: nowrap;
+  transform: rotate(-30deg);
+  transform-origin: center top;
+}
 
 /* ── Timeline ────────────────────────────────────────────────────────────── */
 

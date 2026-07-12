@@ -637,4 +637,27 @@ class StorySearchIntegrationTest {
         assertThat(found.getWordCount()).isEqualTo(87_450);
         assertThat(found.getChapterCount()).isEqualTo(42);
     }
+
+    // ── Word count fallback tests ─────────────────────────────────────────────
+
+    @Test
+    void wordCount_null_is_returned_for_Unknown_display() {
+        StoryRequest req = minimalRequest("WordCountUnknownTest");
+        // No wordCount set — should be null
+        Long id = storyService.create(req).getId();
+        StorySearchRequest search = new StorySearchRequest();
+        StoryResponse found = storyService.advancedSearch(search, 0, 20).getData().stream()
+                .filter(s -> s.getId().equals(id)).findFirst().orElseThrow();
+        assertThat(found.getWordCount()).isNull();
+    }
+
+    @Test
+    void chapterCount_null_is_returned_for_Unknown_display() {
+        StoryRequest req = minimalRequest("ChapterCountUnknownTest");
+        Long id = storyService.create(req).getId();
+        StorySearchRequest search = new StorySearchRequest();
+        StoryResponse found = storyService.advancedSearch(search, 0, 20).getData().stream()
+                .filter(s -> s.getId().equals(id)).findFirst().orElseThrow();
+        assertThat(found.getChapterCount()).isNull();
+    }
 }

@@ -510,7 +510,7 @@ async function _fetchPage(page) {
 }
 
 function _hidePagination() {
-  ['pagination-top', 'pagination-bot'].forEach(id => {
+  ['pagination-bot'].forEach(id => {
     const c = el(id); if (c) c.classList.add('hidden');
   });
 }
@@ -522,7 +522,7 @@ async function _goToPage(n) {
 }
 
 function _renderPagination() {
-  ['pagination-top', 'pagination-bot'].forEach(id => {
+  ['pagination-bot'].forEach(id => {
     const container = el(id);
     if (!container) return;
 
@@ -1223,10 +1223,10 @@ function cardHTML(s) {
     ? lastAccDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
     : '';
   const metaParts = [
-    s.wordCount      ? `<span class="card-meta-item">Words: ${fmtWords(s.wordCount)}</span>` : null,
-    s.chapterCount != null ? `<span class="card-meta-item">Chapters: ${s.chapterCount}</span>` : null,
+    `<span class="card-meta-item">Words: ${s.wordCount != null ? fmtWords(s.wordCount) : 'Unknown'}</span>`,
+    `<span class="card-meta-item">Chapters: ${s.chapterCount != null ? s.chapterCount : 'Unknown'}</span>`,
     `<span class="card-meta-item"${lastAccTooltip ? ` title="${escA(lastAccTooltip)}"` : ''}>Last accessed: ${lastAccText}</span>`,
-  ].filter(Boolean);
+  ];
   const metaHTML = `<div class="card-meta">${metaParts.join(MDOT)}</div>`;
 
   // ── Extras (collections, labels, icons) ───────────────────────────────────────
@@ -1938,6 +1938,9 @@ function bindEvents() {
   document.querySelectorAll('.nav-item[data-view]').forEach(btn => {
     btn.addEventListener('click', () => navigateTo(btn.dataset.view));
   });
+  document.querySelectorAll('.page-tab').forEach(btn => {
+    btn.addEventListener('click', () => navigateTo(btn.dataset.view));
+  });
   el('theme-btn').addEventListener('click', toggleTheme);
   el('density-btn').addEventListener('click', toggleDensity);
   document.querySelectorAll('.metal-btn').forEach(btn => {
@@ -2191,6 +2194,7 @@ function togglePrivacyMode() {
   if (privacyMode) {
     localStorage.setItem('sv_privacy_mode', '1');
     localStorage.removeItem('sv_vault_open');
+    if (vaultOpen) closeVault();
   } else {
     localStorage.removeItem('sv_privacy_mode');
   }
@@ -2200,6 +2204,8 @@ function togglePrivacyMode() {
 function updatePrivacyModeBtn() {
   const badge = el('nav-privacy-status');
   if (badge) badge.textContent = privacyMode ? 'On' : 'Off';
+  const btn = el('nav-privacy-btn');
+  if (btn) btn.classList.toggle('nav-privacy-active', privacyMode);
   if (currentView === 'settings') updateSettingsPage();
 }
 
@@ -2228,6 +2234,9 @@ function navigateTo(view) {
   document.querySelectorAll('.nav-item[data-view]').forEach(btn => {
     btn.classList.toggle('nav-active', btn.dataset.view === view);
   });
+  document.querySelectorAll('.page-tab').forEach(btn => {
+    btn.classList.toggle('page-tab-active', btn.dataset.view === view);
+  });
   if (view === 'collections') renderCollectionsPage();
   if (view === 'downloads')   renderDownloadsPage();
   if (view === 'statistics')  renderStatisticsPage();
@@ -2241,7 +2250,7 @@ function renderCollectionsPage() {
   const grid = el('page-collections-grid');
   if (!grid) return;
   if (allCollections.length === 0) {
-    grid.innerHTML = '<p class="page-empty-note">No collections yet. Use the button above to create one.</p>';
+    grid.innerHTML = '<p class="page-empty-note">No collections yet. Collections are named reading lists — group stories by theme, project, or reading queue. Use the button above to create one.</p>';
     return;
   }
   grid.innerHTML = allCollections.map(c => `
@@ -2436,7 +2445,22 @@ async function renderTimelinePage() {
   timelineState = { page: 0, size: 50, totalPages: 1,
     filter: { fromDate: defaultFrom, toDate: defaultTo }, loading: false };
 
-  container.innerHTML = `
+  const actChartSection = `
+    <div class="activity-chart-section" id="activity-chart-section">
+      <div class="activity-chart-header">
+        <h3 class="activity-chart-title">Reading Activity</h3>
+        <div class="activity-period-toggle">
+          <button class="activity-period-btn activity-period-active" data-period="month">Monthly</button>
+          <button class="activity-period-btn" data-period="week">Weekly</button>
+        </div>
+      </div>
+      <div id="activity-chart" class="activity-chart">
+        <p class="loading-state">Loading activity…</p>
+      </div>
+      <p class="stat-note">Distinct works accessed per period. Only genuine browser-extension reads are counted — import events are excluded.</p>
+    </div>`;
+
+  container.innerHTML = actChartSection + `
     <div class="timeline-stats-row" id="tl-stats-row">
       <div class="timeline-stat-card"><div class="timeline-stat-label">Works opened</div><div class="timeline-stat-value" id="tl-stat-opened">—</div></div>
       <div class="timeline-stat-card"><div class="timeline-stat-label">Kudos given</div><div class="timeline-stat-value" id="tl-stat-kudos">—</div></div>
@@ -2524,8 +2548,46 @@ async function renderTimelinePage() {
     loadTimelineEvents(false);
   });
 
+  document.querySelectorAll('.activity-period-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.activity-period-btn').forEach(b => b.classList.remove('activity-period-active'));
+      btn.classList.add('activity-period-active');
+      loadActivityChart(btn.dataset.period);
+    });
+  });
+
   timelineState.filter = buildTimelineFilter();
-  await Promise.all([loadTimelineEvents(true), loadTimelineStats()]);
+  await Promise.all([loadTimelineEvents(true), loadTimelineStats(), loadActivityChart('month')]);
+}
+
+async function loadActivityChart(period) {
+  const chartEl = el('activity-chart');
+  if (!chartEl) return;
+  try {
+    const res = await fetch(`${API}/reading-history/activity?period=${period}`, {
+      headers: { Authorization: `Bearer ${token}` }
+    });
+    if (!res.ok) { chartEl.innerHTML = '<p class="stat-empty">No reading activity recorded yet.</p>'; return; }
+    const body = await res.json();
+    const data = body.data || {};
+    const entries = Object.entries(data);
+    if (entries.length === 0) {
+      chartEl.innerHTML = `<p class="stat-empty">No reading history recorded yet. Reading activity is tracked when you visit AO3 pages via the browser extension.</p>`;
+      return;
+    }
+    const maxVal = Math.max(...entries.map(([,v]) => v), 1);
+    chartEl.innerHTML = `
+      <div class="activity-bars">
+        ${entries.map(([bucket, count]) => `
+          <div class="activity-bar-col" title="${escA(bucket)}: ${count} work${count === 1 ? '' : 's'}">
+            <div class="activity-bar-fill" style="height:${Math.round((count / maxVal) * 100)}%"></div>
+            <span class="activity-bar-count">${count}</span>
+            <span class="activity-bar-label">${esc(bucket.substring(5))}</span>
+          </div>`).join('')}
+      </div>`;
+  } catch {
+    chartEl.innerHTML = '<p class="stat-empty">Could not load reading activity.</p>';
+  }
 }
 
 function buildTimelineFilter() {
@@ -2748,6 +2810,28 @@ async function renderStatisticsPage() {
          </li>`).join('')}</ol>`;
     };
 
+    const recentPanel = () => {
+      if (!d.recentlyAccessedStories || d.recentlyAccessedStories.length === 0) {
+        return '<p class="stat-empty">No recently accessed stories.</p>';
+      }
+      const note = `<p class="stat-note">Based on last import time — genuine reading dates will improve after browser extension history import.</p>`;
+      return note + accessList(d.recentlyAccessedStories, false);
+    };
+
+    const normalizedList = (items) => {
+      if (!items || items.length === 0) return '<p class="stat-empty">No reading history</p>';
+      const withScore = items
+        .filter(s => s.accessCount != null && s.accessCount > 0)
+        .map(s => ({ ...s, score: s.accessCount / Math.max(s.chapterCount ?? 1, 1) }))
+        .sort((a, b) => b.score - a.score);
+      if (withScore.length === 0) return '<p class="stat-empty">No reading history</p>';
+      return `<ol class="stat-story-list">${withScore.map(s =>
+        `<li class="stat-story-item">
+           <span class="stat-story-title">${esc(s.storyTitle || 'Untitled')}</span>
+           <span class="stat-story-meta">${s.score.toFixed(2)}×</span>
+         </li>`).join('')}</ol>`;
+    };
+
     const totalStories = d.totalStories ?? 0;
 
     container.innerHTML = `
@@ -2813,8 +2897,13 @@ async function renderStatisticsPage() {
           ${accessList(d.mostAccessedStories, true)}
         </div>
         <div class="stat-panel stat-panel-half">
+          <h3 class="stat-panel-title">Estimated read-throughs</h3>
+          <p class="stat-note">access count ÷ chapter count — a rough read frequency, not an exact reread count.</p>
+          ${normalizedList(d.mostAccessedStories)}
+        </div>
+        <div class="stat-panel stat-panel-half">
           <h3 class="stat-panel-title">Recently accessed</h3>
-          ${accessList(d.recentlyAccessedStories, false)}
+          ${recentPanel()}
         </div>
 
         ${d.topLabels && d.topLabels.length > 0 ? `

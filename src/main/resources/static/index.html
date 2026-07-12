@@ -152,6 +152,15 @@
       </div>
     </nav>
 
+    <nav class="page-tabs" id="page-tabs" aria-label="Page navigation">
+      <button class="page-tab" data-view="library">Library</button>
+      <button class="page-tab" data-view="statistics">Statistics</button>
+      <button class="page-tab" data-view="timeline">Timeline</button>
+      <button class="page-tab" data-view="collections">Collections</button>
+      <button class="page-tab" data-view="downloads">Downloads</button>
+      <button class="page-tab" data-view="settings">Settings</button>
+    </nav>
+
     <div id="vault-closed-screen" class="vault-closed-screen hidden" aria-label="Vault is closed">
       <div class="vault-closed-inner">
         <div class="ornament-row">
@@ -194,9 +203,10 @@
               <option value="ABANDONED">Abandoned</option>
             </select>
             <select id="filter-kudos" class="filter-select">
-              <option value="">All kudos</option>
+              <option value="">All kudos states</option>
               <option value="GIVEN">Kudosed ♥</option>
               <option value="NOT_GIVEN">Not kudosed</option>
+              <option value="UNKNOWN">Detection unknown</option>
             </select>
             <select id="filter-collection" class="filter-select">
               <option value="">All collections</option>
@@ -392,7 +402,6 @@
         <p id="story-count" class="story-count hidden"></p>
         <p id="loading-state" class="loading-state hidden">Loading your vault…</p>
         <p id="fetch-error" class="fetch-error hidden">Could not load stories. Is the service running?</p>
-        <div id="pagination-top" class="pagination-controls pagination-top hidden"></div>
         <div id="cards-grid" class="cards-grid"></div>
         <div id="pagination-bot" class="pagination-controls hidden"></div>
         <div id="empty-state" class="empty-state hidden">
@@ -413,6 +422,7 @@
           <p class="page-sub" data-i18n="page.collections.sub">Your curated reading lists</p>
         </div>
         <div class="page-body">
+          <p class="page-helper-note">Collections group stories into named reading lists. Use <strong>Browse</strong> to filter your library by collection. Stories can belong to multiple collections.</p>
           <div class="page-actions-row">
             <button id="page-manage-collections-btn" class="btn btn-primary">+ Manage Collections</button>
           </div>
@@ -506,7 +516,7 @@
             <div class="setting-row setting-row-info">
               <div class="setting-info">
                 <span class="setting-label" data-i18n="settings.privacy.privacyMode">Privacy Mode</span>
-                <span class="setting-hint" data-i18n="settings.privacy.privacyModeHint">Vault always starts closed each session, regardless of last state</span>
+                <span class="setting-hint" data-i18n="settings.privacy.privacyModeHint">Closes the vault immediately and prevents it from auto-opening. Your library data is not deleted — you can still open the vault manually this session.</span>
               </div>
               <button id="settings-privacy-btn" class="setting-toggle-btn"><span id="settings-privacy-status">Off</span></button>
             </div>
@@ -561,6 +571,11 @@
               <div class="setting-info">
                 <span class="setting-label" data-i18n="settings.language.label">Interface language</span>
                 <span class="setting-hint" data-i18n="settings.language.labelHint">Translates StoryVault interface only. Story content is never translated.</span>
+              </div>
+            </div>
+            <div class="setting-row setting-row-info">
+              <div class="setting-info">
+                <span class="setting-hint" style="font-style:italic; color:var(--text-muted);">Note: Interface translation is partially implemented. Most labels display in English regardless of selection.</span>
               </div>
             </div>
             <div id="lang-selector" class="lang-selector-grid"></div>

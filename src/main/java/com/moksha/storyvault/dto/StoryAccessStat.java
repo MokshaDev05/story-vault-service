@@ -12,4 +12,5 @@ public class StoryAccessStat {
     private String storyTitle;
     private Long accessCount;
     private LocalDateTime lastAccessedAt;
+    private Long chapterCount;
 }

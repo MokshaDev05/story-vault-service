@@ -29,6 +29,7 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 public class StatsServiceImpl implements StatsService {
 
+    private static final Pageable TOP_5   = PageRequest.of(0, 5);
     private static final Pageable TOP_25  = PageRequest.of(0, 25);
     private static final Pageable TOP_200 = PageRequest.of(0, 200);
 
@@ -56,7 +57,7 @@ public class StatsServiceImpl implements StatsService {
                 .topRelationships(toLabelCountList(storyRepository.topRelationshipsByUser(user, TOP_25)))
                 .topTags(toLabelCountList(storyRepository.topTagsByUser(user, TOP_25)))
                 .mostAccessedStories(toAccessStatList(readingHistoryRepository.mostAccessedStoriesByUser(user, TOP_25)))
-                .recentlyAccessedStories(toRecentList(storyRepository.recentlyAccessedByUser(user, TOP_25)))
+                .recentlyAccessedStories(toRecentList(storyRepository.recentlyAccessedByUser(user, TOP_5)))
                 .topAuthorsDetailed(buildAuthorStats(storyRepository.topAuthorFandomsByUser(user, TOP_200)))
                 .storiesWithNotes(storyRepository.countStoriesWithNotesByUser(user))
                 .labeledStoriesCount(labelRepository.countDistinctLabeledStoriesByUser(user))
@@ -87,7 +88,8 @@ public class StatsServiceImpl implements StatsService {
                         ((Number) r[0]).longValue(),
                         (String) r[1],
                         ((Number) r[2]).longValue(),
-                        null))
+                        null,
+                        r[3] != null ? ((Number) r[3]).longValue() : null))
                 .toList();
     }
 
@@ -97,7 +99,8 @@ public class StatsServiceImpl implements StatsService {
                         ((Number) r[0]).longValue(),
                         (String) r[1],
                         null,
-                        (LocalDateTime) r[2]))
+                        (LocalDateTime) r[2],
+                        null))
                 .toList();
     }
 
