@@ -548,8 +548,7 @@ public class StoryServiceImpl implements StoryService {
                            || sortBy == StorySearchRequest.SortField.ACCESS_COUNT
                            || sortBy == StorySearchRequest.SortField.RECENTLY_READ
                            || sortBy == StorySearchRequest.SortField.LONGEST_AGO_READ
-                           || sortBy == StorySearchRequest.SortField.NEVER_READ_FIRST
-                           || sortBy == StorySearchRequest.SortField.NEVER_READ_LAST;
+                           || sortBy == StorySearchRequest.SortField.NEVER_READ_FIRST;
 
         // ── Path A: DB-side pagination (9 of 11 sort fields) ─────────────────
         if (!historySort) {
@@ -592,8 +591,7 @@ public class StoryServiceImpl implements StoryService {
         // Recency sorts encode direction in their name; sortDir is ignored for them.
         boolean fixedDirection = sortBy == StorySearchRequest.SortField.RECENTLY_READ
                               || sortBy == StorySearchRequest.SortField.LONGEST_AGO_READ
-                              || sortBy == StorySearchRequest.SortField.NEVER_READ_FIRST
-                              || sortBy == StorySearchRequest.SortField.NEVER_READ_LAST;
+                              || sortBy == StorySearchRequest.SortField.NEVER_READ_FIRST;
         Comparator<Story> comp = buildComparator(sortBy, statsMap);
         if (descending && !fixedDirection) comp = comp.reversed();
         List<Story> sorted = stories.stream().sorted(comp).collect(Collectors.toList());
@@ -645,7 +643,7 @@ public class StoryServiceImpl implements StoryService {
                     (Story s) -> statsMap.containsKey(s.getId()) ? statsMap.get(s.getId()).getFirstAccessedAt() : null,
                     Comparator.<LocalDateTime>nullsLast(Comparator.naturalOrder()));
             // ── Recency sorts: direction and null placement embedded in name ──────
-            case RECENTLY_READ, NEVER_READ_LAST ->
+            case RECENTLY_READ ->
                     // DESC NULLS LAST: most recently read first, never-read at end
                     Comparator.<Story, LocalDateTime>comparing(Story::getLastAccessedAt,
                                     Comparator.nullsLast(Comparator.reverseOrder()))

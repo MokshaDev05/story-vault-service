@@ -443,21 +443,6 @@ class StorySearchIntegrationTest {
     }
 
     @Test
-    void recencySort_neverReadLast_shows_null_after_non_null() {
-        LocalDateTime old    = LocalDateTime.of(2024, 1, 1, 12, 0);
-        LocalDateTime recent = LocalDateTime.of(2025, 6, 1, 12, 0);
-        saveWithLastAccessed("Old Read",    old);
-        saveWithLastAccessed("Recent Read", recent);
-        saveWithLastAccessed("Never Read",  null);
-
-        List<StoryResponse> results = search(
-                StorySearchRequest.builder().sortBy(SortField.NEVER_READ_LAST).build());
-
-        assertThat(results).extracting(StoryResponse::getTitle)
-                .containsExactly("Recent Read", "Old Read", "Never Read");
-    }
-
-    @Test
     void recencySort_equal_dates_sort_stably_by_title() {
         LocalDateTime same = LocalDateTime.of(2025, 3, 15, 10, 0);
         saveWithLastAccessed("Zebra", same);
