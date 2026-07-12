@@ -42,7 +42,7 @@ document.addEventListener('DOMContentLoaded', () => {
   loadDisplayPrefs();
   bindEvents();
   try { i18n.load(); } catch (e) { console.warn('[StoryVault] i18n load failed:', e); }
-  token ? boot() : showLogin();
+  token && !isTokenExpired(token) ? boot() : showLogin();
 });
 
 function isTokenExpired(tok) {
@@ -1183,50 +1183,50 @@ function cardHTML(s) {
       </div>`;
   }
 
-  // ── Inline tags ───────────────────────────────────────────────────────────────
-  const allTags   = _prioritizedTags(s);
-  const preview   = allTags.slice(0, TAGS_PREVIEW_LIMIT);
-  const extra     = allTags.slice(TAGS_PREVIEW_LIMIT);
-  const moreCount = extra.length;
+  // ── Badges (reading status + story status) ────────────────────────────────────
+  const rsChip = s.readingStatus
+    ? `<span class="chip chip-rs-${s.readingStatus.toLowerCase().replace(/_/g, '-')}">${t('readingStatus.' + s.readingStatus) || s.readingStatus}</span>`
+    : '';
+  const ssChip = s.status
+    ? `<span class="chip chip-${s.status.toLowerCase()}">${t('status.' + s.status) || s.status}</span>`
+    : '';
+  const badgesHTML = (rsChip || ssChip) ? `<div class="card-badges">${rsChip}${ssChip}</div>` : '';
 
-  const SEP = `<span class="card-tag-sep" aria-hidden="true"> • </span>`;
-  const _itag = tag => {
-    if (tag.type === 'tag')
-      return `<button class="card-tag-inline-btn" data-filter-key="tag" data-filter-val="${escA(tag.text)}">${esc(tag.text)}</button>`;
-    if (tag.type === 'relationship')
-      return `<button class="card-tag-inline-btn card-tag-ship" data-filter-key="relationship" data-filter-val="${escA(tag.text)}">${esc(tag.text)}</button>`;
-    return `<span class="card-tag-inline-text">${esc(tag.text)}</span>`;
-  };
+  // ── Tag pill chips ────────────────────────────────────────────────────────────
+  const allTags   = _prioritizedTags(s);
+  const preview   = allTags.slice(0, 4);
+  const extra     = allTags.slice(4);
+  const moreCount = extra.length;
 
   let tagsHTML = '';
   if (allTags.length > 0) {
-    const moreBtn  = moreCount > 0
-      ? SEP + `<button class="card-tag-more" data-count="${moreCount}" aria-expanded="false">+${moreCount} more</button>`
+    const moreBtn   = moreCount > 0
+      ? `<button class="card-tag-more" data-count="${moreCount}" aria-expanded="false">+${moreCount} more</button>`
       : '';
-    const extraSpan = moreCount > 0
-      ? `<span class="card-tags-extra hidden">${SEP}${extra.map(_itag).join(SEP)}</span>`
+    const extraDiv  = moreCount > 0
+      ? `<div class="card-tags-extra hidden">${extra.map(_tagPillHTML).join('')}</div>`
       : '';
     tagsHTML = `
-      <div class="card-tags-inline">
-        <span class="card-tags-label">Tags</span>
-        <div class="card-tags-content">${preview.map(_itag).join(SEP)}${moreBtn}${extraSpan}</div>
+      <div class="card-tags-section">
+        <div class="card-tags">${preview.map(_tagPillHTML).join('')}${moreBtn}</div>
+        ${extraDiv}
       </div>`;
   }
 
-  // ── Stats row ─────────────────────────────────────────────────────────────────
-  const SDOT = `<span class="card-stat-sep" aria-hidden="true"> · </span>`;
-  const stars    = ratingStars(s.rating);
-  const words    = fmtWords(s.wordCount);
-  const chapters = s.chapterCount != null ? s.chapterCount : null;
-  const lastRead = s.lastAccessedAt ? relDate(s.lastAccessedAt) : null;
-  const statParts = [
-    stars    ? `<span class="card-stat-stars" title="${esc(t('rating.' + s.rating) || s.rating)}">${stars}</span>` : null,
-    words    ? `<span class="card-stat-item">Words: ${words}</span>` : null,
-    chapters != null ? `<span class="card-stat-item">Chapters: ${chapters}</span>` : null,
-    lastRead ? `<span class="card-stat-item">Last Read: ${lastRead}</span>` : null,
+  // ── Meta row (words · chapters · last read) ───────────────────────────────────
+  const accessedDiff = s.lastAccessedAt && s.createdAt
+    ? new Date(s.lastAccessedAt) - new Date(s.createdAt)
+    : 0;
+  const showLastRead = accessedDiff > 86_400_000;
+
+  const MDOT = `<span class="card-meta-sep" aria-hidden="true"> · </span>`;
+  const metaParts = [
+    s.wordCount      ? `<span class="card-meta-item">Words: ${fmtWords(s.wordCount)}</span>` : null,
+    s.chapterCount != null ? `<span class="card-meta-item">Chapters: ${s.chapterCount}</span>` : null,
+    showLastRead     ? `<span class="card-meta-item">Last read ${relDate(s.lastAccessedAt)}</span>` : null,
   ].filter(Boolean);
-  const statsHTML = statParts.length
-    ? `<div class="card-stats">${statParts.join(SDOT)}</div>`
+  const metaHTML = metaParts.length
+    ? `<div class="card-meta">${metaParts.join(MDOT)}</div>`
     : '';
 
   // ── Extras (collections, labels, icons) ───────────────────────────────────────
@@ -1252,14 +1252,12 @@ function cardHTML(s) {
       <span class="card-corner card-corner-bl" aria-hidden="true">◈</span>
       <span class="card-corner card-corner-br" aria-hidden="true">◈</span>
       <h2 class="card-title">${esc(s.title)}</h2>
-      <p class="card-byline">
-        <button class="card-byline-btn" data-filter-key="author" data-filter-val="${escA(s.author)}">${esc(s.author)}</button>
-        <span class="card-byline-sep" aria-hidden="true"> • </span>
-        <button class="card-byline-btn card-byline-fandom" data-filter-key="fandom" data-filter-val="${escA(s.fandom)}">${esc(s.fandom)}</button>
-      </p>
+      <p class="card-author"><button class="card-author-btn" data-filter-key="author" data-filter-val="${escA(s.author)}">by ${esc(s.author)}</button></p>
+      <p><button class="card-fandom" data-filter-key="fandom" data-filter-val="${escA(s.fandom)}">${esc(s.fandom)}</button></p>
+      ${badgesHTML}
       <div class="card-summary-section">${summaryHTML}</div>
       ${tagsHTML}
-      ${statsHTML}
+      ${metaHTML}
       ${extrasRow}
     </article>`;
 }
@@ -2034,7 +2032,7 @@ function bindEvents() {
     const tagMore = e.target.closest('.card-tag-more');
     if (tagMore) {
       e.stopPropagation();
-      const section = tagMore.closest('.card-tags-section, .card-tags-inline');
+      const section = tagMore.closest('.card-tags-section');
       const extra   = section ? section.querySelector('.card-tags-extra') : null;
       const expanded = tagMore.getAttribute('aria-expanded') === 'true';
       if (expanded) {
@@ -2695,15 +2693,45 @@ async function renderStatisticsPage() {
          </div>`).join('');
     };
 
-    const topList = (items, emptyMsg) => {
+    const topList = (items, emptyMsg, filterKey) => {
       if (!items || items.length === 0) return `<p class="stat-empty">${emptyMsg}</p>`;
       const max = items[0].count;
-      return items.map(item =>
-        `<div class="stat-bar-row">
+      const rows = items.map((item, i) =>
+        `<div class="stat-bar-row${i >= 10 ? ' stat-row-extra hidden' : ''}" data-stat-filter-key="${filterKey || ''}" data-stat-filter-val="${escA(item.label)}">
            <span class="stat-bar-label" title="${escA(item.label)}">${esc(item.label)}</span>
            <div class="stat-bar-track"><div class="stat-bar-fill" style="width:${pct(item.count, max)}%"></div></div>
            <span class="stat-bar-count">${fmt(item.count)}</span>
          </div>`).join('');
+      const hasMore = items.length > 10;
+      const toggle = hasMore
+        ? `<button class="stat-show-more" data-expanded="false">Show all ${items.length}</button>`
+        : '';
+      return rows + toggle;
+    };
+
+    const authorPanel = () => {
+      const detailed = d.topAuthorsDetailed;
+      if (!detailed || detailed.length === 0) return topList(d.topAuthors, 'No stories saved yet', 'author');
+      const max = detailed[0].count;
+      const rows = detailed.map((a, i) => {
+        const topFandoms = a.fandoms.slice(0, 3);
+        const moreCount  = a.fandoms.length - 3;
+        const fandomLine = topFandoms.map(f => `<span class="stat-author-fandom">${esc(f.fandom)} (${fmt(f.count)})</span>`).join('<span class="stat-fandom-sep"> • </span>')
+          + (moreCount > 0 ? `<span class="stat-author-fandom-more">+${moreCount} more</span>` : '');
+        return `<div class="stat-bar-row stat-author-row${i >= 10 ? ' stat-row-extra hidden' : ''}" data-stat-filter-key="author" data-stat-filter-val="${escA(a.name)}">
+          <div class="stat-author-info">
+            <span class="stat-bar-label" title="${escA(a.name)}">${esc(a.name)}</span>
+            <span class="stat-author-fandoms">${fandomLine}</span>
+          </div>
+          <div class="stat-bar-track"><div class="stat-bar-fill" style="width:${pct(a.count, max)}%"></div></div>
+          <span class="stat-bar-count">${fmt(a.count)}</span>
+        </div>`;
+      }).join('');
+      const hasMore = detailed.length > 10;
+      const toggle = hasMore
+        ? `<button class="stat-show-more" data-expanded="false">Show all ${detailed.length}</button>`
+        : '';
+      return rows + toggle;
     };
 
     const accessList = (items, showCount) => {
@@ -2763,19 +2791,19 @@ async function renderStatisticsPage() {
 
         <div class="stat-panel">
           <h3 class="stat-panel-title">Top fandoms</h3>
-          ${topList(d.topFandoms, 'No stories saved yet')}
+          ${topList(d.topFandoms, 'No stories saved yet', 'fandom')}
         </div>
         <div class="stat-panel">
           <h3 class="stat-panel-title">Top authors</h3>
-          ${topList(d.topAuthors, 'No stories saved yet')}
+          ${authorPanel()}
         </div>
         <div class="stat-panel">
           <h3 class="stat-panel-title">Top ships &amp; relationships</h3>
-          ${topList(d.topRelationships, 'No relationship tags found')}
+          ${topList(d.topRelationships, 'No relationship tags found', 'relationship')}
         </div>
         <div class="stat-panel">
           <h3 class="stat-panel-title">Top freeform tags</h3>
-          ${topList(d.topTags, 'No tags found')}
+          ${topList(d.topTags, 'No tags found', 'tag')}
         </div>
 
         <div class="stat-panel stat-panel-half">
@@ -2790,10 +2818,31 @@ async function renderStatisticsPage() {
         ${d.topLabels && d.topLabels.length > 0 ? `
         <div class="stat-panel stat-panel-half">
           <h3 class="stat-panel-title">Top personal labels</h3>
-          ${topList(d.topLabels, 'No labels yet')}
+          ${topList(d.topLabels, 'No labels yet', 'label')}
         </div>` : ''}
 
       </div>`;
+
+    container.addEventListener('click', e => {
+      // Show more/less toggle
+      const showMoreBtn = e.target.closest('.stat-show-more');
+      if (showMoreBtn) {
+        const panel = showMoreBtn.closest('.stat-panel');
+        const expanded = showMoreBtn.dataset.expanded === 'true';
+        panel.querySelectorAll('.stat-row-extra').forEach(r => r.classList.toggle('hidden', expanded));
+        showMoreBtn.dataset.expanded = expanded ? 'false' : 'true';
+        showMoreBtn.textContent = expanded
+          ? `Show all ${panel.querySelectorAll('.stat-row-extra').length + 10}`
+          : 'Show less';
+        return;
+      }
+      // Click row to filter library
+      const row = e.target.closest('[data-stat-filter-key]');
+      if (row && row.dataset.statFilterKey && row.dataset.statFilterVal) {
+        navigateTo('library');
+        setQuickFilter(row.dataset.statFilterKey, row.dataset.statFilterVal);
+      }
+    });
   } catch {
     container.innerHTML = '<p class="page-empty-note">Could not load statistics.</p>';
   }

@@ -25,4 +25,5 @@ public class StatsResponse {
     private long storiesWithNotes;
     private long labeledStoriesCount;
     private List<LabelCount> topLabels;
+    private List<AuthorStats> topAuthorsDetailed;
 }

@@ -1,6 +1,7 @@
 package com.moksha.storyvault.service;
 
 import com.moksha.storyvault.dto.PagedApiResponse;
+import com.moksha.storyvault.dto.StoryRequest;
 import com.moksha.storyvault.dto.StoryResponse;
 import com.moksha.storyvault.dto.StorySearchRequest;
 import com.moksha.storyvault.dto.StorySearchRequest.SortField;
@@ -10,6 +11,7 @@ import com.moksha.storyvault.model.User;
 import com.moksha.storyvault.model.enums.KudosStatus;
 import com.moksha.storyvault.model.enums.Platform;
 import com.moksha.storyvault.model.enums.Rating;
+import com.moksha.storyvault.model.enums.ReadingStatus;
 import com.moksha.storyvault.model.enums.StoryStatus;
 import com.moksha.storyvault.model.Label;
 import com.moksha.storyvault.repository.LabelRepository;
@@ -475,5 +477,77 @@ class StorySearchIntegrationTest {
                 .containsExactly("P-2025-05", "P-2025-04", "P-2025-03");
         assertThat(page1.getData()).extracting(StoryResponse::getTitle)
                 .containsExactly("Q-Never-A", "Q-Never-B");
+    }
+
+    // ── Helper ────────────────────────────────────────────────────────────────
+
+    private StoryRequest minimalRequest(String title) {
+        return StoryRequest.builder()
+                .title(title)
+                .author("Test Author")
+                .fandom("Test Fandom")
+                .platform(Platform.AO3)
+                .status(StoryStatus.ONGOING)
+                .rating(Rating.NOT_RATED)
+                .build();
+    }
+
+    // ── New UI polish tests ───────────────────────────────────────────────────
+
+    @Test
+    void summary_isIncludedInStoryResponse() {
+        StoryRequest req = minimalRequest("Test Story");
+        req.setSummary("A test summary for this work.");
+        Long id = storyService.create(req).getId();
+
+        StorySearchRequest search = new StorySearchRequest();
+        search.setSortBy(StorySearchRequest.SortField.TITLE);
+        PagedApiResponse<StoryResponse> results = storyService.advancedSearch(search, 0, 20);
+
+        StoryResponse found = results.getData().stream()
+                .filter(s -> s.getId().equals(id)).findFirst().orElseThrow();
+        assertThat(found.getSummary()).isEqualTo("A test summary for this work.");
+    }
+
+    @Test
+    void lastAccessedAt_isSetOnReUpsert() {
+        // lastAccessedAt is set on the merge path (re-upsert of an already-known story).
+        StoryRequest req = minimalRequest("AccessTimeTest");
+        storyService.upsert(req); // first upsert → creates the story (lastAccessedAt not set yet)
+        LocalDateTime before = LocalDateTime.now().minusSeconds(1);
+        StoryResponse revisited = storyService.upsert(req).story(); // second → merges, sets lastAccessedAt
+        LocalDateTime after  = LocalDateTime.now().plusSeconds(1);
+
+        assertThat(revisited.getLastAccessedAt()).isNotNull();
+        assertThat(revisited.getLastAccessedAt()).isAfter(before);
+        assertThat(revisited.getLastAccessedAt()).isBefore(after);
+    }
+
+    @Test
+    void readingStatus_isIncludedInStoryResponse() {
+        StoryRequest req = minimalRequest("ReadingStatusTest");
+        req.setReadingStatus(ReadingStatus.STILL_READING);
+        Long id = storyService.create(req).getId();
+
+        StorySearchRequest search = new StorySearchRequest();
+        PagedApiResponse<StoryResponse> results = storyService.advancedSearch(search, 0, 20);
+
+        StoryResponse found = results.getData().stream()
+                .filter(s -> s.getId().equals(id)).findFirst().orElseThrow();
+        assertThat(found.getReadingStatus()).isEqualTo(ReadingStatus.STILL_READING);
+    }
+
+    @Test
+    void storyStatus_isIncludedInStoryResponse() {
+        StoryRequest req = minimalRequest("StatusTest");
+        req.setStatus(StoryStatus.COMPLETE);
+        Long id = storyService.create(req).getId();
+
+        StorySearchRequest search = new StorySearchRequest();
+        PagedApiResponse<StoryResponse> results = storyService.advancedSearch(search, 0, 20);
+
+        StoryResponse found = results.getData().stream()
+                .filter(s -> s.getId().equals(id)).findFirst().orElseThrow();
+        assertThat(found.getStatus()).isEqualTo(StoryStatus.COMPLETE);
     }
 }

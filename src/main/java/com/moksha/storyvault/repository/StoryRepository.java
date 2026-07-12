@@ -55,6 +55,9 @@ public interface StoryRepository extends JpaRepository<Story, Long>, JpaSpecific
     @Query("SELECT s.author, COUNT(s) FROM Story s WHERE s.user = :user GROUP BY s.author ORDER BY COUNT(s) DESC")
     List<Object[]> topAuthorsByUser(@Param("user") User user, Pageable pageable);
 
+    @Query("SELECT s.author, s.fandom, COUNT(s) FROM Story s WHERE s.user = :user GROUP BY s.author, s.fandom ORDER BY COUNT(s) DESC")
+    List<Object[]> topAuthorFandomsByUser(@Param("user") User user, Pageable pageable);
+
     @Query("SELECT r, COUNT(s.id) FROM Story s JOIN s.relationships r WHERE s.user = :user GROUP BY r ORDER BY COUNT(s.id) DESC")
     List<Object[]> topRelationshipsByUser(@Param("user") User user, Pageable pageable);
 

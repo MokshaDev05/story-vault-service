@@ -1303,96 +1303,6 @@ button.detail-author:hover { color: var(--metal); }
   display: inline-block;
 }
 
-/* ─── Card byline (Author • Fandom) ─────────────────────────────────────── */
-.card-byline {
-  font-size: 12px;
-  font-family: var(--font-serif);
-  color: var(--text-sec);
-  display: flex;
-  align-items: baseline;
-  flex-wrap: wrap;
-}
-.card-byline-btn {
-  background: none;
-  border: none;
-  padding: 0;
-  cursor: pointer;
-  font-size: 12px;
-  font-family: var(--font-serif);
-  color: var(--text-sec);
-  transition: color var(--ease);
-  line-height: inherit;
-}
-.card-byline-btn:hover { color: var(--metal); background: none; }
-.card-byline-fandom {
-  font-size: 10px;
-  font-weight: 700;
-  font-family: var(--font-ui);
-  letter-spacing: .10em;
-  text-transform: uppercase;
-  color: var(--metal);
-  opacity: .80;
-}
-.card-byline-fandom:hover { opacity: 1; color: var(--metal-soft); background: none; }
-.card-byline-sep { color: var(--text-muted); }
-
-/* ─── Inline tags ────────────────────────────────────────────────────────── */
-.card-tags-inline {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-.card-tags-label {
-  font-family: var(--font-ui);
-  font-size: 9px;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: .10em;
-  color: var(--text-muted);
-}
-.card-tags-content {
-  font-family: var(--font-ui);
-  font-size: 11px;
-  color: var(--text-muted);
-  line-height: 1.65;
-}
-.card-tag-inline-btn {
-  background: none;
-  border: none;
-  padding: 0;
-  cursor: pointer;
-  font-family: var(--font-ui);
-  font-size: 11px;
-  color: var(--text-muted);
-  transition: color var(--ease);
-  line-height: inherit;
-}
-.card-tag-inline-btn:hover { color: var(--metal); background: none; }
-.card-tag-ship { color: var(--metal); opacity: .75; }
-.card-tag-ship:hover { opacity: 1; }
-.card-tag-inline-text { font-size: 11px; color: var(--text-muted); }
-.card-tag-sep { color: var(--border); }
-.card-tags-inline .card-tag-more { margin-top: 0; }
-
-/* ─── Stats row ──────────────────────────────────────────────────────────── */
-.card-stats {
-  font-family: var(--font-ui);
-  font-size: 11px;
-  color: var(--text-muted);
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 1px;
-  margin-top: auto;
-}
-.card-stat-stars {
-  color: var(--metal-soft);
-  font-size: 11px;
-  letter-spacing: 1px;
-}
-.card-stat-item { white-space: nowrap; }
-.card-stat-sep { color: var(--border); white-space: pre; }
-
 /* ─── Card extras (collections, labels, icons) ───────────────────────────── */
 .card-extras {
   display: flex;
@@ -2758,7 +2668,7 @@ button.card-fandom:hover { opacity: 1; text-decoration: underline; text-underlin
 /* ── Statistics page ──────────────────────────────────────────────────────── */
 .stats-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
   gap: 12px;
 }
 
@@ -2795,7 +2705,7 @@ button.card-fandom:hover { opacity: 1; text-decoration: underline; text-underlin
 }
 
 .stat-panel {
-  grid-column: span 2;
+  grid-column: span 3;
   background: var(--bg-surface);
   border: 1px solid var(--border);
   border-radius: var(--radius);
@@ -2818,7 +2728,7 @@ button.card-fandom:hover { opacity: 1; text-decoration: underline; text-underlin
 }
 .stat-bar-row {
   display: grid;
-  grid-template-columns: minmax(80px, 1fr) 3fr auto;
+  grid-template-columns: minmax(140px, 2fr) 2fr auto;
   align-items: center;
   gap: 8px;
   margin-bottom: 7px;
@@ -2826,9 +2736,7 @@ button.card-fandom:hover { opacity: 1; text-decoration: underline; text-underlin
 .stat-bar-label {
   font-size: 11px;
   color: var(--text-primary);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  overflow-wrap: break-word;
 }
 .stat-bar-track {
   height: 6px;
@@ -2883,6 +2791,57 @@ button.card-fandom:hover { opacity: 1; text-decoration: underline; text-underlin
   color: var(--text-muted);
   white-space: nowrap;
   flex-shrink: 0;
+}
+
+/* ─── Stat panel author details ─────────────────────────────────────────── */
+.stat-author-row { align-items: start; }
+.stat-author-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  overflow: hidden;
+}
+.stat-author-fandoms {
+  font-size: 10px;
+  color: var(--text-muted);
+  line-height: 1.4;
+  overflow-wrap: break-word;
+}
+.stat-author-fandom { white-space: nowrap; }
+.stat-fandom-sep { color: var(--border); }
+.stat-author-fandom-more {
+  font-size: 10px;
+  color: var(--text-muted);
+  font-style: italic;
+}
+.stat-show-more {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 10px;
+  color: var(--accent);
+  padding: 6px 0 2px;
+  display: block;
+  transition: color var(--ease);
+}
+.stat-show-more:hover { color: var(--accent-hi); }
+/* ─── Card badges row ────────────────────────────────────────────────────── */
+.card-badges {
+  display: flex;
+  gap: 5px;
+  flex-wrap: wrap;
+}
+/* ─── Card meta (words · chapters · last read) ───────────────────────────── */
+.card-meta-item {
+  font-size: 11px;
+  color: var(--text-muted);
+  font-family: var(--font-ui);
+  white-space: nowrap;
+}
+.card-meta-sep {
+  font-size: 11px;
+  color: var(--border);
+  white-space: pre;
 }
 
 /* ── Import Center page ───────────────────────────────────────────────────── */
