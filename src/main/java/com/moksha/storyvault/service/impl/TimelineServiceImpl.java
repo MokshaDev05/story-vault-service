@@ -15,6 +15,7 @@ import com.moksha.storyvault.service.TimelineService;
 import jakarta.persistence.criteria.JoinType;
 import jakarta.persistence.criteria.Predicate;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
@@ -31,6 +32,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 
+@Slf4j
 @Service
 @Transactional(readOnly = true)
 @RequiredArgsConstructor
@@ -175,6 +177,7 @@ public class TimelineServiceImpl implements TimelineService {
         try {
             return objectMapper.writeValueAsString(meta);
         } catch (JsonProcessingException e) {
+            log.warn("Failed to serialize timeline metadata: {}", e.getMessage());
             return "{}";
         }
     }
