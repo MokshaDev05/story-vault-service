@@ -597,7 +597,7 @@ public class StoryServiceImpl implements StoryService {
         List<Story> sorted = stories.stream().sorted(comp).collect(Collectors.toList());
 
         long totalElements = sorted.size();
-        int  totalPages    = (int) Math.max(1, Math.ceil((double) totalElements / size));
+        int  totalPages    = totalElements == 0 ? 0 : (int) Math.ceil((double) totalElements / size);
         int  fromIndex     = page * size;
         if (fromIndex >= totalElements) {
             return PagedApiResponse.success("Search results", List.of(), totalElements, totalPages, page, size);
@@ -684,7 +684,8 @@ public class StoryServiceImpl implements StoryService {
 
     @Override
     public StoryPublicResponse getPublicView(Long id) {
-        Story story = storyRepository.findById(id)
+        User user = securityUtils.currentUser();
+        Story story = storyRepository.findByIdAndUser(id, user)
                 .orElseThrow(() -> new StoryNotFoundException(id));
         return StoryPublicResponse.builder()
                 .id(story.getId())

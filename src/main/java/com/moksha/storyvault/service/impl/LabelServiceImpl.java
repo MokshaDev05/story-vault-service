@@ -49,8 +49,10 @@ public class LabelServiceImpl implements LabelService {
     @Override
     public List<LabelResponse> listAll() {
         var user = securityUtils.currentUser();
+        Map<Long, Long> storyCountById = labelRepository.countStoriesPerLabel(user).stream()
+                .collect(Collectors.toMap(r -> (Long) r[0], r -> (Long) r[1]));
         return labelRepository.findAllByUserOrderByNameAsc(user).stream()
-                .map(this::toResponse)
+                .map(label -> toResponse(label, storyCountById.getOrDefault(label.getId(), 0L)))
                 .collect(Collectors.toList());
     }
 
@@ -113,11 +115,15 @@ public class LabelServiceImpl implements LabelService {
     }
 
     private LabelResponse toResponse(Label label) {
+        return toResponse(label, label.getStories().size());
+    }
+
+    private LabelResponse toResponse(Label label, long storyCount) {
         return LabelResponse.builder()
                 .id(label.getId())
                 .name(label.getName())
                 .color(label.getColor())
-                .storyCount(label.getStories().size())
+                .storyCount((int) storyCount)
                 .createdAt(label.getCreatedAt())
                 .updatedAt(label.getUpdatedAt())
                 .build();

@@ -22,6 +22,9 @@ public interface LabelRepository extends JpaRepository<Label, Long> {
     @Query("SELECT l.name, COUNT(s.id) FROM Label l JOIN l.stories s WHERE l.user = :user GROUP BY l.name ORDER BY COUNT(s.id) DESC")
     List<Object[]> topLabelsByUser(@Param("user") User user);
 
+    @Query("SELECT l.id, COUNT(s.id) FROM Label l LEFT JOIN l.stories s WHERE l.user = :user GROUP BY l.id")
+    List<Object[]> countStoriesPerLabel(@Param("user") User user);
+
     @Query("SELECT COUNT(DISTINCT s.id) FROM Label l JOIN l.stories s WHERE l.user = :user")
     long countDistinctLabeledStoriesByUser(@Param("user") User user);
 }
