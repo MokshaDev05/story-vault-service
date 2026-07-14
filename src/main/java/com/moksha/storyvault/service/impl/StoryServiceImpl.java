@@ -118,19 +118,21 @@ public class StoryServiceImpl implements StoryService {
 
         if (existing.isPresent()) {
             log.info("Upsert — merging metadata for story id {}", existing.get().getId());
-            return new UpsertResult(mergeAndRecordRevisit(existing.get(), request, user), false);
+            LocalDateTime prior = existing.get().getLastAccessedAt();
+            return new UpsertResult(mergeAndRecordRevisit(existing.get(), request, user), false, prior);
         }
 
         try {
             StoryResponse created = create(request);
             log.info("Upsert — new story created: {}", created.getId());
-            return new UpsertResult(created, true);
+            return new UpsertResult(created, true, null);
         } catch (DuplicateStoryException e) {
             // Concurrent insert between our lookup and the create — merge instead
             Story concurrent = storyRepository.findById(e.getExistingStory().getId())
                     .orElseThrow(() -> e);
             log.info("Upsert — concurrent duplicate resolved for story id {}", concurrent.getId());
-            return new UpsertResult(mergeAndRecordRevisit(concurrent, request, user), false);
+            LocalDateTime prior = concurrent.getLastAccessedAt();
+            return new UpsertResult(mergeAndRecordRevisit(concurrent, request, user), false, prior);
         }
     }
 

@@ -67,6 +67,9 @@ public class ImportJob {
     @Column(name = "last_error", columnDefinition = "TEXT")
     private String lastError;
 
+    @Column(name = "ao3_username", length = 100)
+    private String ao3Username;
+
     @CreationTimestamp
     @Column(name = "created_at", nullable = false, updatable = false)
     private LocalDateTime createdAt;

@@ -671,4 +671,168 @@ class ImportControllerTest {
         assertThat(((Number) data(resp2).get("itemsProcessed")).intValue()).isEqualTo(3);
         assertThat(data(resp2).get("currentPage")).isEqualTo(2);
     }
+
+    // ── Durable checkpoint — ao3Username ──────────────────────────────────────
+
+    private ResponseEntity<Map> createJobWithUsername(String platform, String importType,
+                                                       String ao3Username, String token) {
+        String body = "{\"platform\":\"" + platform + "\",\"importType\":\"" + importType + "\""
+                + (ao3Username != null ? ",\"ao3Username\":\"" + ao3Username + "\"" : "")
+                + "}";
+        return rest.exchange(url("/api/v1/imports"), HttpMethod.POST,
+                new HttpEntity<>(body, auth(token)), Map.class);
+    }
+
+    @Test
+    void create_with_ao3_username_stores_and_returns_it() {
+        ResponseEntity<Map> resp = createJobWithUsername("AO3", "HISTORY", "archivefan99", tokenA);
+
+        assertThat(resp.getStatusCode()).isEqualTo(HttpStatus.CREATED);
+        assertThat(data(resp).get("ao3Username")).isEqualTo("archivefan99");
+    }
+
+    @Test
+    void create_without_ao3_username_returns_null_ao3_username() {
+        ResponseEntity<Map> resp = createJob("AO3", "HISTORY", tokenA);
+
+        assertThat(resp.getStatusCode()).isEqualTo(HttpStatus.CREATED);
+        assertThat(data(resp).get("ao3Username")).isNull();
+    }
+
+    @Test
+    void get_by_id_returns_checkpoint_fields_including_ao3_username() {
+        ResponseEntity<Map> created = createJobWithUsername("AO3", "HISTORY", "resumeuser", tokenA);
+        Long id = ((Number) data(created).get("id")).longValue();
+        transition(id, "start", tokenA);
+        long nano = System.nanoTime();
+
+        historyBatch(id, """
+                {"currentPage":453,"totalPages":453,"entries":[
+                  {"story":{"title":"Old Fic","author":"Auth","fandom":"F","platform":"AO3","sourceWorkId":"ckpt-%d"}}
+                ]}""".formatted(nano), tokenA);
+
+        ResponseEntity<Map> resp = rest.exchange(url("/api/v1/imports/" + id),
+                HttpMethod.GET, new HttpEntity<>(auth(tokenA)), Map.class);
+
+        assertThat(resp.getStatusCode()).isEqualTo(HttpStatus.OK);
+        Map<?, ?> d = data(resp);
+        assertThat(d.get("ao3Username")).isEqualTo("resumeuser");
+        assertThat(d.get("currentPage")).isEqualTo(453);
+        assertThat(((Number) d.get("totalPages")).intValue()).isEqualTo(453);
+        assertThat(d.get("status")).isEqualTo("RUNNING");
+    }
+
+    @Test
+    void checkpoint_is_zero_before_first_batch_accepted() {
+        Long id = createJobId("AO3", "HISTORY", tokenA);
+        transition(id, "start", tokenA);
+
+        ResponseEntity<Map> resp = rest.exchange(url("/api/v1/imports/" + id),
+                HttpMethod.GET, new HttpEntity<>(auth(tokenA)), Map.class);
+
+        assertThat(data(resp).get("currentPage")).isEqualTo(0);
+        assertThat(data(resp).get("totalPages")).isNull();
+    }
+
+    @Test
+    void checkpoint_advances_only_after_batch_is_accepted() {
+        Long id = createJobId("AO3", "HISTORY", tokenA);
+        transition(id, "start", tokenA);
+        long nano = System.nanoTime();
+
+        // Before any batch: checkpoint is 0
+        assertThat(data(rest.exchange(url("/api/v1/imports/" + id),
+                HttpMethod.GET, new HttpEntity<>(auth(tokenA)), Map.class)).get("currentPage"))
+                .isEqualTo(0);
+
+        // After first batch (page 453): checkpoint advances to 453
+        historyBatch(id, """
+                {"currentPage":453,"totalPages":453,"entries":[
+                  {"story":{"title":"F1","author":"A","fandom":"F","platform":"AO3","sourceWorkId":"adv-a-%d"}}
+                ]}""".formatted(nano), tokenA);
+
+        assertThat(data(rest.exchange(url("/api/v1/imports/" + id),
+                HttpMethod.GET, new HttpEntity<>(auth(tokenA)), Map.class)).get("currentPage"))
+                .isEqualTo(453);
+
+        // After second batch (page 452): checkpoint advances to 452
+        historyBatch(id, """
+                {"currentPage":452,"totalPages":453,"entries":[
+                  {"story":{"title":"F2","author":"A","fandom":"F","platform":"AO3","sourceWorkId":"adv-b-%d"}}
+                ]}""".formatted(nano), tokenA);
+
+        assertThat(data(rest.exchange(url("/api/v1/imports/" + id),
+                HttpMethod.GET, new HttpEntity<>(auth(tokenA)), Map.class)).get("currentPage"))
+                .isEqualTo(452);
+    }
+
+    @Test
+    void retrying_committed_page_does_not_regress_last_accessed_ordering() {
+        Long id = createJobId("AO3", "HISTORY", tokenA);
+        transition(id, "start", tokenA);
+        long nano = System.nanoTime();
+        String workId = "order-" + nano;
+
+        // Page 10 (older read: 2021): sets lastAccessedAt to 2021-06-01T12:00
+        historyBatch(id, """
+                {"currentPage":10,"totalPages":20,"entries":[
+                  {"story":{"title":"Shared Fic","author":"A","fandom":"F","platform":"AO3","sourceWorkId":"%s"},
+                   "historyAccessDate":"2021-06-01"}
+                ]}""".formatted(workId), tokenA);
+
+        // Page 5 (newer read: 2023): sets lastAccessedAt to 2023-11-15T12:00
+        historyBatch(id, """
+                {"currentPage":5,"totalPages":20,"entries":[
+                  {"story":{"title":"Shared Fic","author":"A","fandom":"F","platform":"AO3","sourceWorkId":"%s"},
+                   "historyAccessDate":"2023-11-15"}
+                ]}""".formatted(workId), tokenA);
+
+        // Verify ordering after initial forward crawl
+        Long storyId = storyRepository.findAllWithTagsByUser(userA).stream()
+                .filter(s -> workId.equals(s.getSourceWorkId()))
+                .findFirst().orElseThrow().getId();
+        var storyAfterForward = storyRepository.findById(storyId).orElseThrow();
+        assertThat(storyAfterForward.getLastAccessedAt()).isEqualTo(
+                java.time.LocalDateTime.of(2023, 11, 15, 12, 0));
+
+        // Retry page 10 (worker dies and re-sends) — must NOT roll back to 2021
+        historyBatch(id, """
+                {"currentPage":10,"totalPages":20,"entries":[
+                  {"story":{"title":"Shared Fic","author":"A","fandom":"F","platform":"AO3","sourceWorkId":"%s"},
+                   "historyAccessDate":"2021-06-01"}
+                ]}""".formatted(workId), tokenA);
+
+        var storyAfterRetry = storyRepository.findById(storyId).orElseThrow();
+        assertThat(storyAfterRetry.getLastAccessedAt()).isEqualTo(
+                java.time.LocalDateTime.of(2023, 11, 15, 12, 0));
+    }
+
+    @Test
+    void complete_via_page_1_batch_followed_by_complete_endpoint() {
+        Long id = createJobId("AO3", "HISTORY", tokenA);
+        transition(id, "start", tokenA);
+        long nano = System.nanoTime();
+
+        historyBatch(id, """
+                {"currentPage":3,"totalPages":3,"entries":[
+                  {"story":{"title":"Oldest","author":"A","fandom":"F","platform":"AO3","sourceWorkId":"comp-a-%d"}}
+                ]}""".formatted(nano), tokenA);
+        historyBatch(id, """
+                {"currentPage":2,"totalPages":3,"entries":[
+                  {"story":{"title":"Middle","author":"A","fandom":"F","platform":"AO3","sourceWorkId":"comp-b-%d"}}
+                ]}""".formatted(nano), tokenA);
+        historyBatch(id, """
+                {"currentPage":1,"totalPages":3,"entries":[
+                  {"story":{"title":"Newest","author":"A","fandom":"F","platform":"AO3","sourceWorkId":"comp-c-%d"}}
+                ]}""".formatted(nano), tokenA);
+
+        // After page 1 batch accepted, job is still RUNNING (extension calls /complete)
+        assertThat(data(rest.exchange(url("/api/v1/imports/" + id),
+                HttpMethod.GET, new HttpEntity<>(auth(tokenA)), Map.class)).get("currentPage"))
+                .isEqualTo(1);
+
+        ResponseEntity<Map> completeResp = transition(id, "complete", tokenA);
+        assertThat(completeResp.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(data(completeResp).get("status")).isEqualTo("COMPLETED");
+    }
 }

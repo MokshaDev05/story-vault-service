@@ -23,6 +23,7 @@ public class ImportJobResponse {
     private int errorCount;
     private String errorMessage;
     private String lastError;
+    private String ao3Username;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
 }

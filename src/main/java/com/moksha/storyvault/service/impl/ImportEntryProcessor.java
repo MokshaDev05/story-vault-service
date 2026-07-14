@@ -31,9 +31,14 @@ public class ImportEntryProcessor {
     public UpsertResult process(ImportedStoryEntry entry) {
         UpsertResult result = storyService.upsert(entry.getStory());
         if (entry.getHistoryAccessDate() != null) {
-            LocalDateTime accessedAt = entry.getHistoryAccessDate().atTime(12, 0);
-            readingHistoryService.logImported(result.story().getId(), accessedAt);
-            storyService.setLastReadDate(result.story().getId(), accessedAt);
+            LocalDateTime importedAt = entry.getHistoryAccessDate().atTime(12, 0);
+            readingHistoryService.logImported(result.story().getId(), importedAt);
+            // Use whichever is more recent: the AO3 import date or the date already on the
+            // story from a later page in this same crawl. This prevents retrying an older
+            // page from rolling back a more recent lastAccessedAt already recorded.
+            LocalDateTime prior = result.priorLastAccessedAt();
+            LocalDateTime effective = (prior != null && prior.isAfter(importedAt)) ? prior : importedAt;
+            storyService.setLastReadDate(result.story().getId(), effective);
         }
         return result;
     }

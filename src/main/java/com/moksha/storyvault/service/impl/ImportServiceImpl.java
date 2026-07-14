@@ -42,6 +42,7 @@ public class ImportServiceImpl implements ImportService {
                 .user(user)
                 .platform(request.getPlatform())
                 .importType(request.getImportType())
+                .ao3Username(request.getAo3Username())
                 .build();
         return toResponse(importJobRepository.save(job));
     }
@@ -216,6 +217,7 @@ public class ImportServiceImpl implements ImportService {
                 .errorCount(job.getErrorCount())
                 .errorMessage(job.getErrorMessage())
                 .lastError(job.getLastError())
+                .ao3Username(job.getAo3Username())
                 .createdAt(job.getCreatedAt())
                 .updatedAt(job.getUpdatedAt())
                 .build();
