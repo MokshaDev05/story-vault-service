@@ -260,6 +260,7 @@ CONTAINER_DEFS="$(cat <<EOF
     {"name": "JWT_SECRET",                   "value": "${JWT_SECRET}"},
     {"name": "JWT_EXPIRATION",               "value": "2592000000"},
     {"name": "SPRING_PROFILES_ACTIVE",       "value": "production"},
+    {"name": "APP_SEED_ENABLED",             "value": "false"},
     {"name": "JAVA_OPTS",                    "value": "-XX:+UseContainerSupport -XX:MaxRAMPercentage=75.0"}
   ],
   "logConfiguration": {

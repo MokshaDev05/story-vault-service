@@ -27,7 +27,15 @@ On subsequent runs, just start the existing container:
 docker start storyvaultdb
 ```
 
-**2. Build and run the service**
+**2. Set required environment variables**
+
+`JWT_SECRET` is required — the app will refuse to start without it:
+
+```bash
+export JWT_SECRET="$(openssl rand -base64 48)"
+```
+
+**3. Build and run the service**
 
 ```bash
 cd story-vault-service
@@ -44,14 +52,14 @@ The API is live at `http://localhost:8080`. Flyway creates all tables automatica
 
 A `demo` user (password: `demo123`) is created automatically on first boot and adopts any pre-existing stories.
 
-**3. Open the web UI**
+**4. Open the web UI**
 
 Navigate to `http://localhost:8080` in your browser.
 
 - New user: click **Create an account** on the login screen.
 - Existing user: enter your credentials and click **Enter the Vault**.
 
-**4. (Optional) Install the Chrome extension**
+**5. (Optional) Install the Chrome extension**
 
 See `story-vault-extension/README.md` for install steps. Once installed and signed in, every AO3 work page you open is tracked automatically — no clicks needed.
 
@@ -222,7 +230,7 @@ HTTP Request
     └── NoteController                 (personal notes — /api/v1/stories/{id}/notes)
     └── DownloadController             (download history — /api/v1/stories/{id}/downloads)
     └── StoryFileController            (private file upload/download — /api/v1/stories/{id}/file)
-    └── PublicController               (no auth — /api/v1/public/stories/{id})
+    └── PublicController               (authenticated — /api/v1/public/stories/{id})
             └── *ServiceImpl
                     └── Repositories  (Spring Data JPA + Specifications)
                             └── HikariCP pool
@@ -418,11 +426,13 @@ All fields optional. `eventType` defaults to `PAGE_LOAD` if omitted.
 
 Max file size: **50 MB**. One file per story — delete before replacing.
 
-### Public (no token required)
+### Authenticated endpoints (token required for all `/api/**` paths)
+
+#### Story metadata (public view)
 
 | Method | Path | Status | Description |
 |--------|------|--------|-------------|
-| `GET` | `/api/v1/public/stories/{id}` | 200 | Safe metadata — no notes, files, or user info |
+| `GET` | `/api/v1/public/stories/{id}` | 200 | Safe metadata — no notes, files, or user info. Requires a valid JWT. |
 
 ### HTTP status codes
 
